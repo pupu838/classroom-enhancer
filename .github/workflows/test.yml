@@ -1,0 +1,42 @@
+name: Edge package and classroom regression
+on:
+  push:
+    branches: [main, v1-enhancer]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-edge:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm install --no-audit --no-fund
+      - run: python build.py
+      - run: npm run test:dom
+      - name: Test actual Edge and final extracted package
+        shell: pwsh
+        run: |
+          $paths = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe")
+          $env:BROWSER_EXECUTABLE = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (!$env:BROWSER_EXECUTABLE) { throw 'Microsoft Edge not found' }
+          npm run test:browser
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Expand-Archive downloads/Classroom_Enhancer_Edge_v0.2.0.zip -DestinationPath "$env:RUNNER_TEMP\classroom-edge"
+          $env:EXTENSION_DIR = "$env:RUNNER_TEMP\classroom-edge"
+          npm run test:extension
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: edge-test-evidence
+          path: |
+            tests/artifacts/
+            preview.png
+            downloads/Classroom_Enhancer_Edge_v0.2.0.zip

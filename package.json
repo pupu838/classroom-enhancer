@@ -1,0 +1,15 @@
+{
+  "name": "classroom-enhancer",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "test:dom": "node tests/dom-test.cjs",
+    "test:browser": "node tests/test.cjs",
+    "test:extension": "node tests/extension-test.cjs",
+    "build": "python3 build.py"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2",
+    "jsdom": "^27.0.0"
+  }
+}

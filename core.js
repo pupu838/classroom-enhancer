@@ -20,7 +20,7 @@ button:hover{background:#354663}button:disabled{opacity:.45;cursor:default}butto
 #caption:empty{display:none}
 </style>
 <button id="open" aria-expanded="false">课堂增强</button>
-<section id="panel" hidden><h3>云课堂增强 · 试用版</h3>
+<section id="panel" hidden><h3>Classroom Enhancer · v1 预览</h3>
 <label>显示字幕<input id="captions" type="checkbox"></label>
 <label>字号 <span id="sizeVal"></span><input id="size" type="range" min="16" max="64" step="1"></label>
 <label>水平位置<input id="x" type="range" min="10" max="90"></label>
@@ -100,5 +100,7 @@ async function startAudio(){
 $('audio').onclick=()=>audioState?stopAudio('已恢复原声。'):startAudio();
 $('noise').onclick=()=>{audioState?.worklet?.port.postMessage({type:'calibrate'});status('采样中 1.5 秒：此时应只有底噪，没有老师讲话。');};
 window.addEventListener('pagehide',()=>stopAudio());window.addEventListener('resize',position);document.addEventListener('scroll',position,true);
+__LEARNING_MODULE__
+installLearning(shadow,()=>rootVideo);
 setInterval(refresh,180);refresh();paint();
 })();

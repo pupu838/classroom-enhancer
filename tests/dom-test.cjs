@@ -1,5 +1,5 @@
-const {JSDOM}=require('../../test-deps/node_modules/jsdom');const fs=require('fs'),assert=require('assert');
-const core=fs.readFileSync(__dirname+'/../core.js','utf8').replace('__WORKLET_SOURCE__',JSON.stringify(fs.readFileSync(__dirname+'/../denoise-worklet.js','utf8')));
+const {JSDOM}=require('jsdom');const fs=require('fs'),assert=require('assert');
+const core=fs.readFileSync(__dirname+'/../edge/content.js','utf8');
 const dom=new JSDOM('<!doctype html><body><div class="video-js"><video src="https://media.example/test.mp4"></video></div><div class="captions-right">第一句</div>',{url:'https://ylb.nwafu.edu.cn/TeachingCenterStudentWeb/index.html#/aiClassroom',runScripts:'outside-only'});
 const w=dom.window,d=w.document,v=d.querySelector('video'),calls=[];let fail=false;
 w.HTMLElement.prototype.getBoundingClientRect=()=>({left:20,top:20,width:800,height:450});Object.defineProperties(v,{readyState:{get:()=>4},currentSrc:{get:()=>v.src},paused:{get:()=>false}});
