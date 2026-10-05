@@ -30,6 +30,6 @@ import zipfile
 with zipfile.ZipFile(p/'downloads/Classroom_Enhancer_Edge_v0.2.0.zip','w',zipfile.ZIP_DEFLATED) as z:
     for f in sorted((p/'edge').iterdir()):
         if f.is_file():
-            info=zipfile.ZipInfo(f.name,(2026,10,5,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=0o644<<16;z.writestr(info,f.read_bytes())
-    info=zipfile.ZipInfo('INSTALL.txt',(2026,10,5,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=0o644<<16
+            info=zipfile.ZipInfo(f.name,(2026,10,5,0,0,0));info.create_system=3;info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=0o644<<16;z.writestr(info,f.read_bytes())
+    info=zipfile.ZipInfo('INSTALL.txt',(2026,10,5,0,0,0));info.create_system=3;info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=0o644<<16
     z.writestr(info,'解压此 ZIP 到一个文件夹。在 Edge 的 edge://extensions 开启开发人员模式，加载解压缩的扩展，选择该文件夹。该文件夹内必须直接看到 manifest.json。版本 0.2.0。完整说明见 GitHub README。')
