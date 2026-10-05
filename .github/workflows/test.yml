@@ -19,6 +19,7 @@ jobs:
           python-version: '3.12'
       - run: npm install --no-audit --no-fund
       - run: python build.py
+      - run: git diff --exit-code -- edge manifest.json Classroom_Enhancer.user.js downloads
       - run: npm run test:dom
       - name: Test actual Edge and final extracted package
         shell: pwsh
@@ -28,6 +29,10 @@ jobs:
           if (!$env:BROWSER_EXECUTABLE) { throw 'Microsoft Edge not found' }
           npm run test:browser
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:TEST_OUTPUT_DIR = "tests/artifacts/repository-root"
+          npm run test:extension
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:TEST_OUTPUT_DIR = "tests/artifacts/final-zip"
           Expand-Archive downloads/Classroom_Enhancer_Edge_v0.2.0.zip -DestinationPath "$env:RUNNER_TEMP\classroom-edge"
           $env:EXTENSION_DIR = "$env:RUNNER_TEMP\classroom-edge"
           npm run test:extension

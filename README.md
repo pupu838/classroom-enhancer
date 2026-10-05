@@ -6,7 +6,7 @@
 
 ## 安装 Edge
 
-1. 点击 GitHub 的 **Code → Download ZIP**，完整解压。也可下载 `downloads/Classroom_Enhancer_Edge_v0.2.0.zip`，这是更小的 Edge 专用包。
+1. 点击 GitHub 的 **Code → Download ZIP**，完整解压。也可下载 [Edge 专用包](downloads/Classroom_Enhancer_Edge_v0.2.0.zip)，这是更小的 Edge 专用包。
 2. 打开 `edge://extensions`，开启“开发人员模式”，点击“加载解压缩的扩展”。
 3. **选择能直接看到 `manifest.json` 的文件夹。不要选择 ZIP 文件或它的上一级目录。** 专用包解压后清单就在根层。
 4. 打开学校课堂录像并刷新，右上角出现“课堂增强”。
