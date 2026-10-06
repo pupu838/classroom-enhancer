@@ -73,9 +73,9 @@ iPad 可使用学校导航和导入的 AI 大纲；不把平板 localhost 当作
 
 ## 验证与已知边界
 
-见 [测试报告](docs/TEST_REPORT.md)。报告区分：真实浏览器、合成课堂页面、模拟本机模型、真实课堂现场、Windows Edge 和 iPad Safari，不将其中一种冒充另一种。
+新版见 [0.3.0 开发与验收记录](docs/DEV_0_3.md)，旧版见 [0.2.0 测试报告](docs/TEST_REPORT.md)。报告区分：真实浏览器、合成课堂页面、模拟本机模型、真实课堂现场、Windows Edge 和 iPad Safari，不将其中一种冒充另一种。
 
-本次完整需求基线见 [V1_REQUIREMENTS.md](docs/V1_REQUIREMENTS.md)。0.2.0 是按该基线推进的预览版本，真实收音效果、学校页面现场提取、双端最终验收仍是后续门槛。
+本次完整需求基线见 [V1_REQUIREMENTS.md](docs/V1_REQUIREMENTS.md)。0.3.0 是按修订方案推进的预览版本，真实收音效果、学校页面现场提取、双端最终验收仍是后续门槛。
 
 ## 开发
 
