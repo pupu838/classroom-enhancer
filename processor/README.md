@@ -6,7 +6,7 @@
 
 1. 安装 Python 3.10 或以上和 FFmpeg，将 ffmpeg 加到 PATH；运行 `python --version`、`ffmpeg -version` 确认。
 2. 在项目目录执行 `python -m pip install -r processor/requirements.txt`。此步下载开源依赖，语音识别时只用本地模型。
-3. 自行准备兼容 faster-whisper/CTranslate2 的模型目录，需要 model.bin、config.json、tokenizer.json、preprocessor_config.json。仅下载一个普通大语言模型不能替代语音识别模型。本版要求本地完整文件，缺失时会报错而不是偷偷下载。
+3. 自行准备兼容 faster-whisper/CTranslate2 的模型目录，需要 model.bin、config.json、tokenizer.json，以及模型仓库提供的词表等配套文件；preprocessor_config.json 若该模型仓库提供也应保留。仅下载一个普通大语言模型不能替代语音识别模型。本版要求本地完整文件，缺失时会报错而不是偷偷下载。
 4. 在学校网页扩展面板点“导出课次信息”，用于保持课次 ID 和原视频时长一致。准备你有权处理的本地音频/视频。
 
 模型与硬件选型尚未按真实课程评测，默认 CPU/int8，不保证任意电脑的速度或字幕优于学校。初始识别后端参考官方 [faster-whisper 文档](https://github.com/SYSTRAN/faster-whisper)。

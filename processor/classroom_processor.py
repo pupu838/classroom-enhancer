@@ -102,13 +102,14 @@ def cues_from_chunk(raw, window, offset):
 class WhisperBackend:
     def __init__(self, folder, device='cpu', compute_type='int8', prompt=''):
         folder = Path(folder).resolve()
-        for name in ('model.bin', 'config.json', 'tokenizer.json', 'preprocessor_config.json'):
+        for name in ('model.bin', 'config.json', 'tokenizer.json'):
             if not (folder/name).is_file():
                 raise ValueError(f'本地模型缺少 {name}；不会自动下载模型。')
         os.environ['HF_HUB_OFFLINE'] = '1'
         os.environ['TRANSFORMERS_OFFLINE'] = '1'
         from faster_whisper import WhisperModel
-        self.identity = {'engine': 'faster-whisper', 'model': folder.name,
+        from importlib.metadata import version
+        self.identity = {'engine': 'faster-whisper', 'engineVersion': version('faster-whisper'), 'model': folder.name,
                          'files': {p.name: digest_file(p) for p in sorted(folder.iterdir()) if p.is_file()},
                          'device': device, 'computeType': compute_type, 'promptHash': digest(prompt)}
         self.model = WhisperModel(str(folder), device=device, compute_type=compute_type, local_files_only=True)
