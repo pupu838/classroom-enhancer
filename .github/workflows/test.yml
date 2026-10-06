@@ -33,7 +33,7 @@ jobs:
           npm run test:extension
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:TEST_OUTPUT_DIR = "tests/artifacts/final-zip"
-          Expand-Archive downloads/Classroom_Enhancer_Edge_v0.2.0.zip -DestinationPath "$env:RUNNER_TEMP\classroom-edge"
+          Expand-Archive downloads/Classroom_Enhancer_Edge_v0.3.0.zip -DestinationPath "$env:RUNNER_TEMP\classroom-edge"
           $env:EXTENSION_DIR = "$env:RUNNER_TEMP\classroom-edge"
           npm run test:extension
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -44,4 +44,17 @@ jobs:
           path: |
             tests/artifacts/
             preview.png
-            downloads/Classroom_Enhancer_Edge_v0.2.0.zip
+            downloads/Classroom_Enhancer_Edge_v0.3.0.zip
+
+  local-processor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
+      - run: python tests/test_processor.py
+      - run: python -m pip install -r processor/requirements.txt
+      - run: python tests/asr_smoke.py

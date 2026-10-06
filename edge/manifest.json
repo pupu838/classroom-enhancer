@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "西农云课堂增强",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "全屏可调字幕、本地人声增强与底噪采样降噪（试用版）",
   "content_scripts": [
     {

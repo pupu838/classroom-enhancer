@@ -28,7 +28,7 @@ button:hover{background:#354663}button:disabled{opacity:.45;cursor:default}butto
 <label>背景透明度<input id="opacity" type="range" min="0" max="100"></label>
 <label>文字颜色<input id="color" type="color"></label>
 <div class="row"><button id="fullscreen">带字幕全屏</button><button id="webfull">网页铺满</button><button id="reset">重置字幕</button></div>
-<p class="note">字幕可直接拖动。iPad 请用上方“带字幕全屏”，避免系统原生视频全屏。字幕文字沿用学校转写，可能有错字。</p>
+<p class="note">字幕可直接拖动。iPad 请用上方“带字幕全屏”，避免系统原生视频全屏。字幕按所选来源显示，识别稿可能有错字。</p>
 <hr><h3>人声增强与底噪抑制</h3>
 <label>增益 <span id="gainVal"></span><input id="gain" type="range" min="0" max="15" step="1"></label>
 <label>降噪强度<input id="strength" type="range" min="0" max="3" step="0.1"></label>
@@ -52,7 +52,7 @@ function refresh(){
   anchor=v.closest('.video-js')||v.parentElement;
   const fs=document.fullscreenElement||document.webkitFullscreenElement;
   if(fs && fs.tagName!=='VIDEO'){if(host.parentElement!==fs)fs.append(host);}else if(!fs && host.parentElement!==document.documentElement)document.documentElement.append(host);
-  const src=document.querySelector('.captions-right');const text=src?.textContent.trim()||'';
+  const src=document.querySelector('.captions-right');const text=transcripts.text(v.currentTime,src?.textContent.trim()||'');
   if($('caption').textContent!==text)$('caption').textContent=text;
   if(text&&!captionDetected){captionDetected=true;if(!audioState&&!pending)status('已找到网站字幕；音频增强未启用。');}
   position();
@@ -100,7 +100,9 @@ async function startAudio(){
 $('audio').onclick=()=>audioState?stopAudio('已恢复原声。'):startAudio();
 $('noise').onclick=()=>{audioState?.worklet?.port.postMessage({type:'calibrate'});status('采样中 1.5 秒：此时应只有底噪，没有老师讲话。');};
 window.addEventListener('pagehide',()=>stopAudio());window.addEventListener('resize',position);document.addEventListener('scroll',position,true);
+__TRANSCRIPT_MODULE__
+const transcripts=installTranscript(shadow,()=>rootVideo);
 __LEARNING_MODULE__
-installLearning(shadow,()=>rootVideo);
+installLearning(shadow,()=>rootVideo,transcripts);
 setInterval(refresh,180);refresh();paint();
 })();
