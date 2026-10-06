@@ -116,7 +116,14 @@ class WhisperBackend:
         self.prompt = prompt
 
     def transcribe(self, path):
-        segments, _ = self.model.transcribe(str(path), language='zh', beam_size=5,
+        # FFmpeg already produced canonical PCM. Feed samples directly, avoiding a
+        # second decode and incompatibilities between PyAV versions.
+        import numpy as np
+        with wave.open(str(path), 'rb') as w:
+            if (w.getnchannels(), w.getsampwidth(), w.getframerate()) != (1, 2, 16000):
+                raise ValueError('识别输入必须是 16 kHz 单声道 PCM。')
+            audio = np.frombuffer(w.readframes(w.getnframes()), dtype='<i2').astype(np.float32) / 32768.0
+        segments, _ = self.model.transcribe(audio, language='zh', beam_size=5,
                                            word_timestamps=True, vad_filter=False,
                                            condition_on_previous_text=False, initial_prompt=self.prompt or None)
         return [{'start': s.start, 'end': s.end, 'text': s.text,
