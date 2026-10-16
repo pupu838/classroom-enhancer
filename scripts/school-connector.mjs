@@ -38,10 +38,10 @@ if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
  let page=0,currentCourse='',totalEpisodes=0;
  async function loadReplays(id,more=false){
   if(busy)throw Error('请等待当前音频提取完成');const c=courses.get(String(id));if(!c?.recording)throw Error('请选择有回放的课程');
-  if(!more||currentCourse!==c.id){page=0;replays.clear();$('episodes').replaceChildren();}currentCourse=c.id;page++;
-  const data=await adapter.request({url:adapter.cfg.teachingApi+'/v1/videoinfos/page',type:'post',isApplication:true,data:{userId:adapter.userId,groupIds:c.classes,openStatus:'1',week:null,schoolYear:term.schoolYear,term:term.term,validCode:adapter.cfg.validCode,page,pageSize:30}});
+  if(!more||currentCourse!==c.id){page=0;replays.clear();$('episodes').replaceChildren();}currentCourse=c.id;const nextPage=page+1;
+  const data=await adapter.request({url:adapter.cfg.teachingApi+'/v1/videoinfos/page?validCode='+encodeURIComponent(adapter.cfg.validCode),type:'post',isApplication:true,data:{userId:adapter.userId,groupIds:c.classes,openStatus:'1',week:null,schoolYear:term.schoolYear,term:term.term,validCode:adapter.cfg.validCode,page:nextPage,pageSize:30}});
   if(!Array.isArray(data.videoInfoResourceList))throw Error('课次接口格式发生变化');
-  const items=data.videoInfoResourceList.filter(v=>v.id && Number(v.openStatus)!==0 && (v.resourceStatus==null||Number(v.resourceStatus)===0)).map(v=>({id:String(v.id),name:String(v.videoInfoName||c.name),course:c.id,date:String(v.startTime||''),end:String(v.endTime||'')}));
+  page=nextPage;const items=data.videoInfoResourceList.filter(v=>v.id && Number(v.openStatus)!==0 && (v.resourceStatus==null||Number(v.resourceStatus)===0)).map(v=>({id:String(v.id),name:String(v.videoInfoName||c.name),course:c.id,date:String(v.startTime||''),end:String(v.endTime||'')}));
   for(const v of items){replays.set(v.id,v);const label=document.createElement('label'),cb=document.createElement('input'),text=document.createElement('span');cb.type='checkbox';cb.value=v.id;text.textContent=`${v.date} ${v.name}`;label.append(cb,text);$('episodes').append(label);}
   totalEpisodes=Number(data.total)||0;$('more').hidden=page*30>=totalEpisodes;$('extract').disabled=!replays.size;
   status(`${c.name}：已读取 ${replays.size} / ${totalEpisodes} 个课次。`);send({type:'replays',courseId:c.id,items:[...replays.values()],hasMore:!$('more').hidden});return items;

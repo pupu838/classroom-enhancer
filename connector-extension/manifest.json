@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "西农课堂连接器",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "使用学校当前登录读取课程与回放，在浏览器内提取原始音轨。",
   "content_scripts": [
     {
