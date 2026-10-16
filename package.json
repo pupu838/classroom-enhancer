@@ -6,10 +6,13 @@
     "test:dom": "node tests/dom-test.cjs",
     "test:browser": "node tests/test.cjs",
     "test:extension": "node tests/extension-test.cjs",
-    "build": "python3 build.py"
+    "build": "python3 build.py",
+    "build:connector": "node scripts/build-connector.mjs",
+    "test:connector": "node tests/connector-test.cjs"
   },
   "devDependencies": {
     "playwright": "^1.58.2",
-    "jsdom": "^27.0.0"
+    "jsdom": "^27.0.0",
+    "mp4box": "2.3.0"
   }
 }
