@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>课堂云端处理设置</title>
+<style>body{font:16px system-ui;max-width:700px;margin:40px auto;padding:20px}label{display:block;margin:20px 0}input,textarea{display:block;width:100%;padding:10px;box-sizing:border-box}button{padding:12px}p{line-height:1.6}</style>
+<h1>课堂云端处理</h1><p>此配置保存在浏览器扩展私有存储中，不交给学校页面。需要已部署的私有处理服务；未配置时仍可使用音频提取。</p>
+<label>服务地址（HTTPS 根地址）<input id="endpoint" type="url" placeholder="https://你的处理服务域名/"></label>
+<label>连接密钥<input id="token" type="password" autocomplete="off"></label>
+<label>课程与教材对应表（JSON：课程ID → Google Drive 教材文件ID）<textarea id="textbooks" rows="7">{}</textarea></label>
+<label><input id="auto" type="checkbox">提取完成后自动上传云端</label>
+<label><input id="sync" type="checkbox">登录后自动处理教材对应表中课程的新增回放（需保持浏览器打开至上传完成）</label><button id="save">保存并检查连接</button><p id="status" role="status"></p><script src="options.js"></script>

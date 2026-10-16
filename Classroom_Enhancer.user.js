@@ -109,13 +109,13 @@ async function startAudio(){
 $('audio').onclick=()=>audioState?stopAudio('已恢复原声。'):startAudio();
 $('noise').onclick=()=>{audioState?.worklet?.port.postMessage({type:'calibrate'});status('采样中 1.5 秒：此时应只有底噪，没有老师讲话。');};
 window.addEventListener('pagehide',()=>stopAudio());window.addEventListener('resize',position);document.addEventListener('scroll',position,true);
-// Versioned local classroom packages. No remote requests or credentials.
+// Versioned classroom packages; cloud transport stays in the extension background.
 function installTranscript(shadow,getVideo) {
  const $=id=>shadow.getElementById(id),section=document.createElement('section');section.id='ce-transcript';
- section.innerHTML=`<h3>课堂字幕数据</h3><p id="ct-lesson" class="note"></p><label>导入课堂数据包<input id="ct-file" type="file" accept=".json,application/json"></label><label>字幕来源<select id="ct-source"><option value="school">学校网页字幕</option></select></label><label>字幕延后秒数<input id="ct-offset" type="number" min="-30" max="30" step="0.1" value="0" style="width:80px"></label><p id="ct-info" class="note">未导入数据包；学校字幕尚未核验。</p><details><summary>复核当前字幕</summary><p id="ct-original" class="note"></p><textarea id="ct-edit" aria-label="修订当前字幕" style="width:100%;height:70px"></textarea><label><input id="ct-reviewed" type="checkbox">我已对照音频核对这句话</label><button id="ct-current">读取当前句</button><button id="ct-save">另存修订</button></details><div class="row"><button id="ct-export">导出字幕数据包</button><button id="ct-metadata">导出课次信息</button></div><p id="ct-message" class="note" role="status"></p><hr>`;
+ section.innerHTML=`<h3>课堂字幕数据</h3><button id="ct-cloud">刷新云端字幕</button><div id="ct-chapters"></div><p id="ct-lesson" class="note"></p><label>导入课堂数据包<input id="ct-file" type="file" accept=".json,application/json"></label><label>字幕来源<select id="ct-source"><option value="school">学校网页字幕</option></select></label><label>字幕延后秒数<input id="ct-offset" type="number" min="-30" max="30" step="0.1" value="0" style="width:80px"></label><p id="ct-info" class="note">未导入数据包；学校字幕尚未核验。</p><details><summary>复核当前字幕</summary><p id="ct-original" class="note"></p><textarea id="ct-edit" aria-label="修订当前字幕" style="width:100%;height:70px"></textarea><label><input id="ct-reviewed" type="checkbox">我已对照音频核对这句话</label><button id="ct-current">读取当前句</button><button id="ct-save">另存修订</button></details><div class="row"><button id="ct-export">导出字幕数据包</button><button id="ct-metadata">导出课次信息</button></div><p id="ct-message" class="note" role="status"></p><hr>`;
  $('panel').prepend(section);
  let key='',pack=null,selected='school',offset=0,token=0,editing=null,fingerprint='',listeners=[],lastIdentity='',restore=0;
- const lesson=()=>new URLSearchParams(location.hash.split('?')[1]||'').get('videoId')||location.pathname+location.hash.split('?')[0];
+ const lesson=()=>{const params=new URLSearchParams(location.hash.split('?')[1]||'');return params.get('id')||params.get('videoId')||location.pathname+location.hash.split('?')[0];};
  const message=s=>$('ct-message').textContent=s;
  function database(){return new Promise((resolve,reject)=>{const r=indexedDB.open('classroom-enhancer',1);r.onupgradeneeded=()=>r.result.createObjectStore('transcripts');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
  async function storage(value,storageKey=key){const db=await database();try{return await new Promise((resolve,reject)=>{const tx=db.transaction('transcripts',value===undefined?'readonly':'readwrite'),s=tx.objectStore('transcripts');const req=value===undefined?s.get(storageKey):s.put(value,storageKey);tx.oncomplete=()=>resolve(req.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}finally{db.close();}}
@@ -131,7 +131,8 @@ function installTranscript(shadow,getVideo) {
   const tracks=data.tracks.map(t=>{if(typeof t.id!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/.test(t.id)||t.id==='school'||ids.has(t.id))throw Error('字幕轨道 ID 无效或重复。');ids.add(t.id);if(!['asr','school','revised'].includes(t.kind)||!Number.isInteger(t.revision)||t.revision<1||t.revision>100000)throw Error('字幕来源/版本无效。');if(!Array.isArray(t.segments)||t.segments.length>50000)throw Error('字幕段数量无效。');let prev=-1,segmentIds=new Set();
    const segments=t.segments.map(c=>{if(typeof c.id!=='string'||c.id.length>100||segmentIds.has(c.id)||!finite(c.start)||!finite(c.end)||c.start<0||c.start<prev||c.end<=c.start||c.end>duration+.05||typeof c.text!=='string'||!c.text.trim()||c.text.length>2000)throw Error('字幕文本或时间无效。');if(!intervals.some(r=>c.start>=r[0]-10&&c.end<=r[1]+10))throw Error('字幕不属于已处理区间。');prev=c.start;segmentIds.add(c.id);return {id:c.id,start:c.start,end:c.end,text:c.text,reviewed:c.reviewed===true,boundaryReview:c.boundaryReview===true,...(typeof c.originalText==='string'?{originalText:c.originalText.slice(0,2000)}:{})};});
    return {id:t.id,kind:t.kind,revision:t.revision,segments,...(typeof t.derivedFrom==='string'?{derivedFrom:t.derivedFrom.slice(0,80)}:{})};});
-  return {schema:data.schema,lectureId:key,packageId:String(data.packageId||'').slice(0,100),media:{duration,sha256:sourceHash},coverage:{status:data.coverage.status,intervals},tracks};
+  const chapters=(data.chapters||[]);if(!Array.isArray(chapters)||chapters.length>1000||chapters.some((c,i)=>!finite(c.start)||c.start<0||c.start>=duration||i>0&&c.start<=chapters[i-1].start||typeof c.title!=='string'||c.title.length>100))throw Error('章节格式无效');
+  return {chapters:chapters.map(c=>({start:c.start,title:c.title})),schema:data.schema,lectureId:key,packageId:String(data.packageId||'').slice(0,100),media:{duration,sha256:sourceHash},coverage:{status:data.coverage.status,intervals},tracks};
  }
  function validMedia(){const v=getVideo();return !pack||!Number.isFinite(v?.duration)||Math.abs(v.duration-pack.media.duration)<=2;}
  function track(){return pack?.tracks.find(t=>t.id===selected);}
@@ -140,11 +141,30 @@ function installTranscript(shadow,getVideo) {
  function paint(){
   $('ct-lesson').textContent=`本节课 ID：${key}`;const picker=$('ct-source');picker.replaceChildren(new Option('学校网页字幕','school'));
   for(const t of pack?.tracks||[])picker.add(new Option(`${t.kind==='asr'?'新识别稿':t.kind==='revised'?'修订稿':'学校存档'} · v${t.revision}`,t.id));picker.value=selected;$('ct-offset').value=offset;
+  const chapters=$('ct-chapters');chapters.replaceChildren();for(const c of pack?.chapters||[]){const b=document.createElement('button');b.textContent=`${Math.floor(c.start/60)}:${String(Math.floor(c.start%60)).padStart(2,'0')} ${c.title}`;b.disabled=!validMedia();b.onclick=()=>{const v=getVideo();if(v&&validMedia())v.currentTime=c.start+offset;};chapters.append(b);}
   $('ct-info').textContent=!pack?'未导入数据包；学校字幕尚未核验。':!validMedia()?'数据包时长与视频不匹配，导入字幕已停用。':`${pack.coverage.status==='complete'?'已处理整段音频':'仅处理部分课堂'} · ${track()?.segments.length??0} 句（当前来源）。处理完成不代表识别准确；请核对同课次、同音轨及同步。`;
  }
  async function hash(data){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(data)));return [...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,'0')).join('');}
  async function persist(){const current=key;try{await storage({pack,selected,offset,fingerprint});}catch{if(key===current)message('当前可用，但本机保存失败，请导出数据包备份。');}}
- async function route(){const id=lesson();if(id===key)return;key=id;pack=null;selected='school';offset=0;fingerprint='';editing=null;token++;const ticket=++restore;paint();changed();try{const stored=await storage();if(ticket!==restore)return;if(stored?.pack){pack=validate(stored.pack);fingerprint=await hash(pack);if(ticket!==restore)return;selected=pack.tracks.some(t=>t.id===stored.selected)?stored.selected:'school';offset=finite(stored.offset)&&Math.abs(stored.offset)<=30?stored.offset:0;paint();changed();}}catch{if(ticket===restore)message('未能恢复本机字幕，请重新导入。');}}
+ async function route(){const id=lesson();if(id===key)return;key=id;pack=null;selected='school';offset=0;fingerprint='';editing=null;token++;const ticket=++restore;paint();changed();try{const stored=await storage();if(ticket!==restore)return;if(stored?.pack){pack=validate(stored.pack);fingerprint=await hash(pack);if(ticket!==restore)return;selected=pack.tracks.some(t=>t.id===stored.selected)?stored.selected:'school';offset=finite(stored.offset)&&Math.abs(stored.offset)<=30?stored.offset:0;paint();changed();}}catch{if(ticket===restore)message('未能恢复本机字幕，请重新导入。');}if(ticket===restore)fetchCloud();}
+
+ let cloudBusy=false;
+ async function fetchCloud(){
+  if(cloudBusy||typeof chrome==='undefined'||!chrome.runtime?.sendMessage||!/^[-A-Za-z0-9_]{1,200}$/.test(key))return;
+  cloudBusy=true;const expected=key;
+  try{
+   const response=await new Promise((resolve,reject)=>chrome.runtime.sendMessage({ceCloud:1,op:'lecture',id:expected},r=>{const e=chrome.runtime.lastError;if(e)reject(Error(e.message));else resolve(r);}));
+   if(key!==expected)return;if(!response?.ok)throw Error(response?.error||'未连接云端字幕服务');
+   if(response.data.state!=='complete'){message('云端字幕：'+response.data.state+(response.data.error?' · '+response.data.error:''));return;}
+   const ready=validate(response.data.package),fp=await hash(ready);if(key!==expected)return;
+   // Keep manual revisions. Cloud refresh never overwrites a different local revision silently.
+   if(pack?.tracks.some(t=>t.kind==='revised'&&t.id!=='textbook-corrected')){message('云端字幕已就绪；当前有手动修订，保留本机版本。');return;}
+   if(pack?.packageId===ready.packageId&&fingerprint===fp)return;
+   pack=ready;fingerprint=fp;selected=pack.tracks.some(t=>t.id==='textbook-corrected')?'textbook-corrected':pack.tracks[0].id;paint();changed();await persist();message('已加载云端校正字幕与章节；点击章节跳转。');
+  }catch(e){if(key===expected)message(e.message);}finally{cloudBusy=false;}
+ }
+ $('ct-cloud').onclick=fetchCloud;
+ const cloudTimer=setInterval(fetchCloud,30000);window.addEventListener('pagehide',()=>clearInterval(cloudTimer));
  function download(name,data){const u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
  $('ct-file').onchange=async()=>{const f=$('ct-file').files[0];if(!f)return;const ticket=++token;++restore;try{if(f.size>8*1024*1024)throw Error('数据包超过 8 MB。');const ready=validate(JSON.parse(await f.text()));const fp=await hash(ready);if(ticket!==token||lesson()!==key)return;const v=getVideo();if(Number.isFinite(v?.duration)&&Math.abs(v.duration-ready.media.duration)>2)throw Error('数据包时长与视频不匹配。');pack=ready;fingerprint=fp;selected='school';editing=null;paint();changed();await persist();message('已导入。请选择字幕来源，并核对几处音画时间。学校原字幕未被覆盖。');}catch(e){if(ticket===token)message('未导入：'+e.message+' 之前的数据保留。');}$('ct-file').value='';};
  $('ct-source').onchange=()=>{selected=$('ct-source').value;editing=null;paint();changed();persist();};

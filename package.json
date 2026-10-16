@@ -8,7 +8,8 @@
     "test:extension": "node tests/extension-test.cjs",
     "build": "python3 build.py",
     "build:connector": "node scripts/build-connector.mjs",
-    "test:connector": "node tests/connector-test.cjs"
+    "test:connector": "node tests/connector-test.cjs",
+    "test:cloud-player": "node tests/cloud-player-test.cjs"
   },
   "devDependencies": {
     "playwright": "^1.58.2",

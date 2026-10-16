@@ -1,0 +1,27 @@
+name: Cloud pipeline checks
+on:
+  push:
+    branches: [cloud-pipeline-v0.5]
+  pull_request:
+    paths: ['cloud/**', 'scripts/cloud-*', 'transcript.js', 'tests/cloud/**', 'tests/cloud-player-test.cjs']
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install fastapi==0.115.12 httpx==0.28.1 pytest==8.3.5
+      - run: npm install --ignore-scripts
+      - run: python build.py && npm run build:connector
+      - run: python -m pytest tests/cloud -q
+        env:
+          PYTHONPATH: .
+      - run: node tests/cloud-player-test.cjs && npm run test:connector && npm run test:dom

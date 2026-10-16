@@ -1,9 +1,40 @@
 {
   "manifest_version": 3,
   "name": "西农课堂连接器",
-  "version": "0.4.2",
-  "description": "使用学校当前登录读取课程与回放，在浏览器内提取原始音轨。",
+  "version": "0.5.0",
+  "description": "读取课程、提取音轨，连接私有云端制作字幕。",
+  "permissions": [
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "denoise-worklet.js"
+      ],
+      "matches": [
+        "https://ylb.nwafu.edu.cn/*"
+      ]
+    }
+  ],
   "content_scripts": [
+    {
+      "matches": [
+        "https://ylb.nwafu.edu.cn/TeachingCenterStudentWeb/*"
+      ],
+      "js": [
+        "bridge.js",
+        "enhancer.js"
+      ],
+      "world": "ISOLATED",
+      "run_at": "document_idle"
+    },
     {
       "matches": [
         "https://ylb.nwafu.edu.cn/TeachingCenterStudentWeb/*"

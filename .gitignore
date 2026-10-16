@@ -8,3 +8,8 @@ processor/jobs/
 *.mp3
 models/
 tests/artifacts/
+
+cloud-data/
+.env
+.env.*
+!cloud/.env.example
