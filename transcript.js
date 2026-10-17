@@ -54,6 +54,7 @@ function installTranscript(shadow,getVideo) {
   }catch(e){if(key===expected)message(e.message);}finally{cloudBusy=false;}
  }
  $('ct-cloud').onclick=fetchCloud;
+ window.addEventListener('ce-cloud-ready',fetchCloud);
  const cloudTimer=setInterval(fetchCloud,30000);window.addEventListener('pagehide',()=>clearInterval(cloudTimer));
  function download(name,data){const u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
  $('ct-file').onchange=async()=>{const f=$('ct-file').files[0];if(!f)return;const ticket=++token;++restore;try{if(f.size>8*1024*1024)throw Error('数据包超过 8 MB。');const ready=validate(JSON.parse(await f.text()));const fp=await hash(ready);if(ticket!==token||lesson()!==key)return;const v=getVideo();if(Number.isFinite(v?.duration)&&Math.abs(v.duration-ready.media.duration)>2)throw Error('数据包时长与视频不匹配。');pack=ready;fingerprint=fp;selected='school';editing=null;paint();changed();await persist();message('已导入。请选择字幕来源，并核对几处音画时间。学校原字幕未被覆盖。');}catch(e){if(ticket===token)message('未导入：'+e.message+' 之前的数据保留。');}$('ct-file').value='';};

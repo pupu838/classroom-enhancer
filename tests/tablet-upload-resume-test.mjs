@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {submitTabletAudio} from '../scripts/tablet-client.mjs';
+const blob=new Blob([readFileSync('../lecture-20261013-3.m4a')]);
+const hash=b=>createHash('sha256').update(b).digest('hex');let meta,requests=[],calls=0;const confirmed=new Set([0,1]);
+const result=()=>({id:'job',state:confirmed.size===9?'transcribing':'uploading',submittedParts:[...confirmed],submitted:confirmed.size,total:9});
+const cloudCall=async(op,data)=>{if(op==='init'){meta=data.job;assert.equal(meta.parts.length,9);return result();}if(op==='status')return result();assert.equal(op,'part');requests.push(data.index);assert(!confirmed.has(data.index),'do not re-upload confirmed data');assert.equal(hash(Buffer.from(data.data,'base64')),meta.parts[data.index].sha256);confirmed.add(data.index);calls++;if(calls===1)throw Error('response lost after server accepted');return result();};
+const state=await submitTabletAudio({record:{id:'lesson',course:'course'},name:'fixture',blob,status(){},cloudCall});assert.equal(state.state,'transcribing');assert.deepEqual(requests,[2,3,4,5,6,7,8]);
+const again=await submitTabletAudio({record:{id:'lesson',course:'course'},name:'fixture',blob,status(){},cloudCall});assert.equal(again.state,'transcribing');assert.equal(calls,7);
+const controller=new AbortController();controller.abort();await assert.rejects(()=>submitTabletAudio({record:{},blob,status(){},cloudCall,signal:controller.signal}),/停止上传/);
+console.log('PASS real 46-minute AAC upload resumes confirmed indices, verifies bytes, handles lost accepted response without duplicate submission, reuses transcribing job, aborts before init');

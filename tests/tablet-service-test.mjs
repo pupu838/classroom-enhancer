@@ -12,7 +12,7 @@ await assert.rejects(()=>request('health',{},'wrong'),/连接口令无效/);
 await assert.rejects(()=>request('init',{...meta,parts:[{...meta.parts[0],start:1}]}),/缺口/);
 const job=await request('init',meta);assert.equal(job.state,'uploading');
 await assert.rejects(()=>request('part',{id:job.id,index:0,data:Buffer.from('wrong').toString('base64')}),/校验失败/);assert.equal(calls,0);
-await request('part',{id:job.id,index:0,data:bytes.toString('base64')});await request('part',{id:job.id,index:0,data:bytes.toString('base64')});assert.equal(calls,1);
+await request('part',{id:job.id,index:0,data:bytes.toString('base64')});await request('part',{id:job.id,index:0,data:bytes.toString('base64')});assert.equal(calls,1);assert.deepEqual((await request('status',{id:job.id})).submittedParts,[0]);
 assert.equal((await request('status',{id:job.id})).state,'uploading');
 await request('part',{id:job.id,index:1,data:bytes.toString('base64')});assert.equal((await request('status',{id:job.id})).state,'transcribing');
 ready=true;await api(new Request(callbacks[0],{method:'POST',body:new URLSearchParams({requestId:'1',code:'0',resultDetail:JSON.stringify([{StartMs:1000,EndMs:2000,FinalSentence:'刚架的约束'}])})}));const done=await request('lecture',{id:'lesson-1'});assert.equal(done.state,'complete');assert.deepEqual(done.package.tracks[0].segments.map(c=>c.start),[1,11]);assert.equal(done.package.media.duration,20);

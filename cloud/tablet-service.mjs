@@ -17,7 +17,7 @@ export function createService({store,asr,secret,origin,sweepSecret,fetcher=fetch
   }else if(d.Status===3){p.state='failed';p.error=String(d.ErrorMsg||'识别失败').slice(0,200);await save(`parts/${j.id}/${i}`,p);}return p;
  }
  async function status(j,refreshAll=true){const rows=[];for(let i=0;i<j.parts.length;i++)rows.push(refreshAll?await refresh(j,i):await get(`parts/${j.id}/${i}`));const complete=rows.every(p=>p?.state==='complete'),submitted=rows.every(p=>p?.taskId),failed=rows.some(p=>p?.state==='failed'||p?.state==='uncertain');
-  const out={id:j.id,state:complete?'complete':failed?'failed':submitted?'transcribing':'uploading',submitted:rows.filter(p=>p?.taskId).length,total:rows.length,finished:rows.filter(p=>p?.state==='complete').length,error:rows.find(p=>p?.error)?.error||null};
+  const out={id:j.id,state:complete?'complete':failed?'failed':submitted?'transcribing':'uploading',submitted:rows.filter(p=>p?.taskId).length,total:rows.length,finished:rows.filter(p=>p?.state==='complete').length,submittedParts:rows.flatMap((p,i)=>p?.taskId?[i]:[]),error:rows.find(p=>p?.error)?.error||null};
   if(complete){await store.delete('pending/'+j.id);let cues=rows.flatMap(p=>p.cues).sort((a,b)=>a.start-b.start);out.package={schema:'classroom-enhancer/1',lectureId:j.lectureId,packageId:j.id,media:{duration:j.duration,sha256:j.sha256},coverage:{status:'complete',intervals:[[0,j.duration]]},tracks:[{id:'tencent-asr',kind:'asr',revision:1,segments:cues}],chapters:[]};}return out;
  }
  return async request=>{

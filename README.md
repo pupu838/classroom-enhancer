@@ -1,6 +1,6 @@
-# 统一课堂助手 0.9.0
+# 统一课堂助手 0.9.1
 
-当前推荐使用 [课堂工作台](https://classroom-enhancer-global-5rcwipvd.edgeone.dev/) 的统一 Userscripts 脚本，电脑与 iPad 共用，常规更新自动加载。[0.9 使用说明与验证范围](docs/IPAD_V0_9.md)。支持多视角自由布局、常驻公共播放栏、三路独立音频、浏览器 RNNoise 降噪和可选本机字幕；下载是独立操作。
+当前推荐使用 [课堂工作台](https://classroom-enhancer-global-5rcwipvd.edgeone.dev/) 的统一 Userscripts 脚本，电脑与 iPad 共用，常规更新自动加载。[0.9 使用说明与验证范围](docs/IPAD_V0_9.md)。支持多视角自由布局、常驻公共播放栏、三路独立音频，下载是独立操作。0.9.1 已撤回本机字幕：用户 M1 iPad 实测发热、识别不佳并重载页面；运行时不再包含识别 Worker 或初始化识别模型。现有 RNNoise 开关仅保留试验用途，尚未达到课堂听清目标。见 [0.9.1 修复说明](docs/IPAD_V0_9_1.md)。
 
 以下保留早期开发版安装说明。
 
