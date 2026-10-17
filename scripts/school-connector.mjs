@@ -2,12 +2,14 @@ import {installCloud,cloudCall} from './cloud-client.mjs';
 import {remuxAudio} from './audio-remux.mjs';
 import {createRangeReader} from './media-range.mjs';
 import {readAudio,saveAudio} from './audio-cache.mjs';
+import {schoolVideoSources} from './school-video-sources.mjs';
+import {installMultiViewPlayer} from './multi-view-player.mjs';
 const SCHOOL='https://ylb.nwafu.edu.cn';
 const PORTAL='https://classroom-enhancer-global-5rcwipvd.edgeone.dev';
 const PORTALS=new Set([PORTAL,'https://classroom-enhancer-workbench-1um3o2ms.edgeone.cool']);
 if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
  window.__CE_SCHOOL_CONNECTOR_V1__=true;
- const VERSION='0.7.0';
+ const VERSION='0.8.0';
  const TABLET=document.documentElement.dataset.ceTabletBridge==='1';
  let adapter=null,term=null,courses=new Map(),replays=new Map(),pair=null,busy=false,controller=null,stage='';
  const host=document.createElement('div');host.id='ce-course-connector';const root=host.attachShadow({mode:'open'});
@@ -100,6 +102,11 @@ if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
   if(!id||id!==current)return Promise.reject(Error('请先打开要收听的具体课次'));
   return prepareLessonAudio(id,signal,onProgress);
  };
+ if(TABLET)installMultiViewPlayer(async id=>{
+  adapter=getAdapter();if(!adapter)throw Error('学校登录与视频资料尚未就绪');
+  const detail=await adapter.request({url:adapter.cfg.teachingApi+'/v1/videoinfo/'+encodeURIComponent(id),type:'get',data:{validCode:code('id='+id+'&signKey=123123')}});
+  return schoolVideoSources(detail);
+ });
  async function addResult(name,blob,record,parts){const url=URL.createObjectURL(blob),box=document.createElement('div'),title=document.createElement('p'),audio=document.createElement('audio'),a=document.createElement('a');title.textContent=name;audio.controls=true;audio.src=url;a.href=url;a.download=name;a.textContent=`保存音频 · ${(blob.size/1024/1024).toFixed(1)} MB`;box.append(title,audio,a);$('results').prepend(box);if(document.documentElement.dataset.ceTabletBridge!=='1')send({type:'audio',name,blob});await cloud.offer(record,name,blob,parts);if(TABLET&&cloud.error)throw Error(cloud.error);}
  async function extract(ids){
   if(busy)throw Error('已有提取任务正在运行');if(!Array.isArray(ids)||ids.length<1||ids.length>20||ids.some(id=>!replays.has(id)))throw Error('只能选择当前已列出的1～20个课次');

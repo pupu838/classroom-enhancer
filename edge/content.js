@@ -41,7 +41,7 @@ ${TABLET?'#open{top:auto;bottom:14px}#panel{top:auto;bottom:62px;width:420px;max
 <div class="row"><button id="fullscreen">带字幕全屏</button><button id="webfull">网页铺满</button><button id="reset">重置字幕</button></div>
 <p class="note">字幕可直接拖动。iPad 请用上方“带字幕全屏”，避免系统原生视频全屏。字幕按所选来源显示，识别稿可能有错字。</p>
 </details></div><div id="ce-library" hidden><div id="ce-courses"></div><details><summary>字幕来源与校对</summary><div id="ce-subtitles"></div></details></div>
-<div id="ce-settings" hidden><h3>字幕服务</h3><button id="ce-connect">连接或更换字幕服务</button><p id="ce-connection" class="note"></p><h3>自动更新</h3><p id="ce-update-status" class="note">重新打开页面时自动检查更新；播放期间保持当前版本。</p></div></section><div id="caption" aria-label="课堂字幕"></div>`;
+<div id="ce-settings" hidden><h3>播放器</h3><button id="ce-player-reset">启用多视角播放器</button><p id="ce-player-message" class="note"></p><h3>字幕服务</h3><button id="ce-connect">连接或更换字幕服务</button><p id="ce-connection" class="note"></p><h3>自动更新</h3><p id="ce-update-status" class="note">重新打开页面时自动检查更新；播放期间保持当前版本。</p></div></section><div id="caption" aria-label="课堂字幕"></div>`;
 const $=id=>shadow.getElementById(id);document.documentElement.append(host);
 const css=document.createElement('style');css.textContent=`.nwa-stage{position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important;z-index:2147483500!important;background:#000!important;margin:0!important;padding:0!important;}.nwa-stage video{width:100%!important;height:100%!important;object-fit:contain!important}.nwa-stage .video-js{height:100%!important;width:100%!important;padding:0!important} .nwa-stage .other-frame{display:none!important}`;document.documentElement.append(css);
 let stage=null;let captionDetected=false;
@@ -53,16 +53,17 @@ function openTab(id){for(const name of ['ce-listen','ce-library','ce-settings'])
 for(const button of shadow.querySelectorAll('#ce-nav button'))button.onclick=()=>openTab(button.dataset.tab);
 $('open').onclick=()=>{const p=$('panel');p.hidden=!p.hidden;if(TABLET&&!rootVideo)openTab('ce-library');$('open').setAttribute('aria-expanded',String(!p.hidden));};
 $('ce-connect').onclick=()=>{const requestId=crypto.randomUUID();$('ce-connect').disabled=true;const timer=setTimeout(()=>done('连接操作超时，请重试'),65000);function done(message){clearTimeout(timer);window.removeEventListener('message',receive);$('ce-connect').disabled=false;$('ce-connection').textContent=message;}function receive(e){const d=e.data;if(e.source!==window||e.origin!==location.origin||d?.ce!=='cloud-response'||d.requestId!==requestId)return;done(d.ok?(d.data.configured?'字幕服务已连接':'尚未连接字幕服务'):d.error);}window.addEventListener('message',receive);window.postMessage({ce:'cloud-request',requestId,op:'connect'},location.origin);};
+$('ce-player-reset').onclick=()=>{if(window.__CE_PLAYER__)window.__CE_PLAYER__.restore();else window.__CE_RETRY_PLAYER__?.();};
 $('reset').onclick=()=>{for(const k of ['size','x','y','opacity','color']){cfg[k]=defaults[k];$(k).value=cfg[k]}save();paint();};
-function chooseVideo(){const all=[...document.querySelectorAll('video')];return all.filter(v=>v.getBoundingClientRect().width>0).sort((a,b)=>{const x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return y.width*y.height-x.width*x.height})[0]||null;}
-function position(){if(!rootVideo)return;const r=rootVideo.getBoundingClientRect();$('caption').style.left=(r.left+r.width*cfg.x/100)+'px';$('caption').style.top=(r.top+r.height*cfg.y/100)+'px';$('caption').style.maxWidth=Math.max(0,r.width*.88)+'px';}
+function chooseVideo(){const managed=window.__CE_PLAYER__?.getVideo();if(managed?.isConnected)return managed;const all=[...document.querySelectorAll('video')];return all.filter(v=>v.getBoundingClientRect().width>0).sort((a,b)=>{const x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return y.width*y.height-x.width*x.height})[0]||null;}
+function position(){if(!rootVideo)return;const r=window.__CE_PLAYER__?.getRect()||rootVideo.getBoundingClientRect();$('caption').style.left=(r.left+r.width*cfg.x/100)+'px';$('caption').style.top=(r.top+r.height*cfg.y/100)+'px';$('caption').style.maxWidth=Math.max(0,r.width*.88)+'px';}
 function refresh(){
   if(location.hash!==lastRoute){lastRoute=location.hash;stopAudio();exitStage();}
-  const v=chooseVideo();rootVideo=v;host.style.display=v||TABLET?'block':'none';if(TABLET){$('ce-update-status').textContent=document.documentElement.dataset.ceUpdateStatus||'重新打开页面时自动检查更新；播放期间保持当前版本。';if(!$('ce-connect').disabled)$('ce-connection').textContent=document.documentElement.dataset.ceCloudConfigured==='1'?'字幕服务已连接。':'字幕服务尚未连接；纯音轨增强可独立使用。';}if(!v){$('caption').textContent='';return;}
-  anchor=v.closest('.video-js')||v.parentElement;
+  const v=chooseVideo();rootVideo=v;host.style.display=v||TABLET?'block':'none';if(TABLET){$('ce-update-status').textContent=document.documentElement.dataset.ceUpdateStatus||'重新打开页面时自动检查更新；播放期间保持当前版本。';$('ce-player-reset').textContent=window.__CE_PLAYER__?'恢复学校播放器':'启用多视角播放器';$('ce-player-message').textContent=window.__CE_PLAYER__?'老师、教室、课件可切换或组合；共用同一进度与倍速。':document.documentElement.dataset.cePlayerMessage||'打开课次后自动接入多视角播放器。';if(!$('ce-connect').disabled)$('ce-connection').textContent=document.documentElement.dataset.ceCloudConfigured==='1'?'字幕服务已连接。':'字幕服务尚未连接；纯音轨增强可独立使用。';}if(!v){$('caption').textContent='';return;}
+  anchor=window.__CE_PLAYER__?.container||v.closest('.video-js')||v.parentElement;
   const fs=document.fullscreenElement||document.webkitFullscreenElement;
   if(fs && fs.tagName!=='VIDEO'){if(host.parentElement!==fs)fs.append(host);}else if(!fs && host.parentElement!==document.documentElement)document.documentElement.append(host);
-  const src=document.querySelector('.captions-right');const text=transcripts.text(v.currentTime,src?.textContent.trim()||'');
+  const src=document.querySelector('.captions-right');const fallback=window.__CE_PLAYER__?window.__CE_PLAYER__.getCaption(v.currentTime):src?.textContent.trim()||'';const text=transcripts.text(v.currentTime,fallback);
   if($('caption').textContent!==text)$('caption').textContent=text;
   if(text&&!captionDetected){captionDetected=true;if(!audioState&&!pending)status('已找到网站字幕；音频增强未启用。');}
   position();
@@ -74,7 +75,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')exitStage()});
 document.addEventListener('fullscreenchange',refresh);document.addEventListener('webkitfullscreenchange',refresh);
 let dragging=false;
 $('caption').onpointerdown=e=>{dragging=true;$('caption').setPointerCapture(e.pointerId);};
-$('caption').onpointermove=e=>{if(!dragging||!rootVideo)return;const r=rootVideo.getBoundingClientRect();cfg.x=Math.max(10,Math.min(90,(e.clientX-r.left)/r.width*100));cfg.y=Math.max(10,Math.min(92,(e.clientY-r.top)/r.height*100));$('x').value=cfg.x;$('y').value=cfg.y;paint();};
+$('caption').onpointermove=e=>{if(!dragging||!rootVideo)return;const r=window.__CE_PLAYER__?.getRect()||rootVideo.getBoundingClientRect();cfg.x=Math.max(10,Math.min(90,(e.clientX-r.left)/r.width*100));cfg.y=Math.max(10,Math.min(92,(e.clientY-r.top)/r.height*100));$('x').value=cfg.x;$('y').value=cfg.y;paint();};
 $('caption').onpointerup=()=>{dragging=false;save()};$('caption').onpointercancel=()=>{dragging=false;save()};
 function waitMedia(a){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>done(Error('音频加载超时')),12000);const ready=()=>done();const fail=()=>done(Error('音频服务器未允许跨域处理，或媒体加载失败'));function done(err){clearTimeout(timer);a.removeEventListener('canplay',ready);a.removeEventListener('error',fail);err?reject(err):resolve()}a.addEventListener('canplay',ready);a.addEventListener('error',fail);a.load();});}
 // Small drift is corrected by a gentle rate change, never repeated tiny seeks.
@@ -85,7 +86,9 @@ function planAudioSync(masterTime,audioTime,baseRate,now,lastSeek,force=false){
  return {seek:null,rate:baseRate*(1+correction)};
 }
 
-function stopAudio(message){epoch++;pending=false;audioPreparation?.abort();audioPreparation=null;const s=audioState;audioState=null;if(s){clearInterval(s.timer);clearTimeout(s.stallTimer);s.clean.forEach(f=>f());s.a.pause();s.a.removeAttribute('src');s.a.load();if(s.objectURL)URL.revokeObjectURL(s.objectURL);for(const [v,m]of s.mutes)if(v.isConnected)v.muted=m;s.ctx.close().catch(()=>{});} $('audio').textContent=TABLET?'准备并启用音频增强':'启用音频增强';$('audio').disabled=false;$('noise').disabled=true;if(message)status(message);}
+function stopAudio(message){epoch++;pending=false;audioPreparation?.abort();audioPreparation=null;const s=audioState;audioState=null;if(s){clearInterval(s.timer);clearTimeout(s.stallTimer);s.clean.forEach(f=>f());s.a.pause();s.a.removeAttribute('src');s.a.load();if(s.objectURL)URL.revokeObjectURL(s.objectURL);for(const [v,m]of s.mutes)if(v.isConnected)v.muted=m;s.ctx.close().catch(()=>{});} $('audio').textContent=TABLET?'准备并启用音频增强':'启用音频增强';$('audio').disabled=false;$('noise').disabled=true;if(message)status(message);window.dispatchEvent(new Event('ce-audio-state'));}
+const soundVideo=()=>window.__CE_PLAYER__?.getVideo()||rootVideo;
+window.__CE_AUDIO_CONTROL__={getMuted:()=>audioState?!!audioState.a.muted:!!soundVideo()?.muted,getVolume:()=>audioState?audioState.a.volume:soundVideo()?.volume??1,setMuted(value){if(audioState){audioState.a.muted=value;audioState.mutes.set(audioState.master,value);}else if(soundVideo())soundVideo().muted=value;window.dispatchEvent(new Event('ce-audio-state'));},setVolume(value){value=Math.max(0,Math.min(1,value));if(audioState)audioState.a.volume=value;if(soundVideo())soundVideo().volume=value;window.dispatchEvent(new Event('ce-audio-state'));}};
 async function startAudio(){
  if(pending)return;const video=rootVideo;if(!video || !video.currentSrc){status('请先播放录像，再启用音频增强。');return;}
  if(video.readyState<2){status('原视频尚未载入；请等录像能正常播放后再启用。');return;}
@@ -119,13 +122,14 @@ async function startAudio(){
    if(!master.paused){a.volume=0;await a.play();}if(ticket!==epoch)throw Error('已取消音频增强');
    for(const [v]of mutes){const volumeChange=()=>{if(audioState!==s)return;if(v===master)a.volume=v.volume;if(!v.muted){stopAudio('检测到原播放器音量/声道切换，已恢复原声。');}};v.muted=true;setTimeout(()=>{if(audioState===s){v.addEventListener('volumechange',volumeChange);clean.push(()=>v.removeEventListener('volumechange',volumeChange));}},0);}
    a.addEventListener('error',()=>stopAudio('增强音轨加载失败，已恢复原声。'),{once:true});
-   a.volume=master.volume;s.timer=setInterval(()=>{if(!master.paused&&!master.seeking)sync();},750);pending=false;$('audio').disabled=false;$('audio').textContent='恢复原声';$('noise').disabled=!worklet;
+   a.volume=master.volume;s.timer=setInterval(()=>{if(!master.paused&&!master.seeking)sync();},750);pending=false;$('audio').disabled=false;$('audio').textContent='恢复原声';$('noise').disabled=!worklet;window.dispatchEvent(new Event('ce-audio-state'));
    status(worklet?'人声滤波与增益已开启。请在无讲话片段采样底噪，启用频谱降噪。':'人声滤波与增益已开启；浏览器限制了频谱处理，降噪采样不可用。');
  }catch(e){if(ticket!==epoch){a?.pause();if(objectURL)URL.revokeObjectURL(objectURL);ctx?.close().catch(()=>{});return;}if(audioState)stopAudio();else{a?.pause();if(a){a.removeAttribute('src');a.load()}if(objectURL)URL.revokeObjectURL(objectURL);ctx?.close().catch(()=>{});}pending=false;audioPreparation=null;$('audio').disabled=false;$('audio').textContent=TABLET?'准备并启用音频增强':'启用音频增强';status((e.message||'音频处理不可用')+'。原视频与原声保留。');}
 }
 $('audio').onclick=()=>audioState||pending?stopAudio('已恢复原声。'):startAudio();
 $('noise').onclick=()=>{audioState?.worklet?.port.postMessage({type:'calibrate'});status('采样中 1.5 秒：此时应只有底噪，没有老师讲话。');};
 window.addEventListener('pagehide',()=>stopAudio());window.addEventListener('resize',position);document.addEventListener('scroll',position,true);
+window.addEventListener('ce-player-changing',()=>{if(audioState||pending)stopAudio('播放器已切换，已恢复原声；缓存保留，可重新启用音频增强。');});
 // Versioned classroom packages; cloud transport stays in the extension background.
 function installTranscript(shadow,getVideo) {
  const $=id=>shadow.getElementById(id),section=document.createElement('section');section.id='ce-transcript';

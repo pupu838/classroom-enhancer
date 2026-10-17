@@ -2,7 +2,7 @@
 // @name 西农课堂 iPad 字幕助手
 // @namespace classroom-enhancer-tablet
 // @version 0.7.0
-// @description 登录学校、选择课次后自动提取音频并提交字幕识别，回放时自动加载字幕
+// @description 多视角同步回放、纯音轨增强与自动字幕；常规应用更新自动加载
 // @match https://ylb.nwafu.edu.cn/TeachingCenterStudentWeb/*
 // @match https://classroom-enhancer-global-5rcwipvd.edgeone.dev/*
 // @run-at document-idle

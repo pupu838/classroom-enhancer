@@ -2,10 +2,12 @@ import {build} from 'esbuild';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const origin='https://classroom-enhancer-global-5rcwipvd.edgeone.dev';
-const version='0.7.0';
+const version='0.8.0';
+// Keep the installed bridge stable; normal app releases use the runtime manifest.
+const loaderVersion='0.7.0';
 const result=await build({entryPoints:['scripts/school-connector.mjs'],bundle:true,format:'iife',target:'safari16',minify:true,write:false});
 const page=`document.documentElement.dataset.ceAppVersion=${JSON.stringify(version)};\n`+readFileSync('edge/content.js','utf8')+'\n'+result.outputFiles[0].text;
-const metadata=`// ==UserScript==\n// @name 西农课堂 iPad 字幕助手\n// @namespace classroom-enhancer-tablet\n// @version ${version}\n// @description 登录学校、选择课次后自动提取音频并提交字幕识别，回放时自动加载字幕\n// @match https://ylb.nwafu.edu.cn/TeachingCenterStudentWeb/*\n// @match ${origin}/*\n// @run-at document-idle\n// @inject-into content\n// @grant GM.getValue\n// @grant GM.setValue\n// @grant GM.xmlHttpRequest\n// @noframes\n// @downloadURL ${origin}/Classroom_iPad.user.js\n// @updateURL ${origin}/Classroom_iPad.meta.js\n// ==/UserScript==\n`;
+const metadata=`// ==UserScript==\n// @name 西农课堂 iPad 字幕助手\n// @namespace classroom-enhancer-tablet\n// @version ${loaderVersion}\n// @description 多视角同步回放、纯音轨增强与自动字幕；常规应用更新自动加载\n// @match https://ylb.nwafu.edu.cn/TeachingCenterStudentWeb/*\n// @match ${origin}/*\n// @run-at document-idle\n// @inject-into content\n// @grant GM.getValue\n// @grant GM.setValue\n// @grant GM.xmlHttpRequest\n// @noframes\n// @downloadURL ${origin}/Classroom_iPad.user.js\n// @updateURL ${origin}/Classroom_iPad.meta.js\n// ==/UserScript==\n`;
 const sha256=createHash('sha256').update(page).digest('hex');
 mkdirSync('portal/tablet/runtime',{recursive:true});
 writeFileSync(`portal/tablet/runtime/${sha256}.js`,page);
