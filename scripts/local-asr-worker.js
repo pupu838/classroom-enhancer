@@ -12,9 +12,9 @@ self.onmessage=async({data:d})=>{
    const originalFetch=self.fetch.bind(self);let engineCache=null;try{engineCache=await caches.open('ce-local-asr-engine-v1');}catch{}
    self.fetch=async(input,options)=>{const url=typeof input==='string'?input:input.url||String(input);if(!url.startsWith(d.wasmBase)||!url.endsWith('.wasm'))return originalFetch(input,options);
     let saved;try{saved=await engineCache?.match(url);}catch{}if(saved){send({type:'notice',message:'正在载入本机识别引擎缓存…'});return saved;}
-    const response=await originalFetch(input,options);if(!response.ok||!response.body)return response;const reader=response.body.getReader(),total=Number(response.headers.get('content-length'))||0;let loaded=0;
-    const stream=new ReadableStream({async pull(controller){try{const item=await reader.read();if(item.done){controller.close();return;}loaded+=item.value.length;send({type:'progress',file:'识别引擎',loaded,progress:total?Math.floor(loaded/total*100):0});controller.enqueue(item.value);}catch(e){controller.error(e);}},cancel:()=>reader.cancel()});
-    const monitored=new Response(stream,{status:response.status,headers:response.headers});try{engineCache?.put(url,monitored.clone()).catch(()=>{});}catch{}return monitored;
+    const response=await originalFetch(input,options);if(!response.ok||!response.body)return response;const reader=response.body.getReader(),total=response.headers.get('content-encoding')?0:Number(response.headers.get('content-length'))||0;let loaded=0;
+    const stream=new ReadableStream({async pull(controller){try{const item=await reader.read();if(item.done){controller.close();return;}loaded+=item.value.length;send({type:'progress',file:'识别引擎',loaded,progress:total?Math.min(100,Math.floor(loaded/total*100)):null});controller.enqueue(item.value);}catch(e){controller.error(e);}},cancel:()=>reader.cancel()});
+    const headers=new Headers(response.headers);headers.delete('content-encoding');headers.delete('content-length');const monitored=new Response(stream,{status:response.status,headers});try{engineCache?.put(url,monitored.clone()).catch(()=>{});}catch{}return monitored;
    };
    const progress_callback=p=>{if(p.status==='progress')send({type:'progress',file:p.file,progress:Math.floor(p.progress||0)});};
    // Quantized Whisper currently produced corrupted mixed-language output on
