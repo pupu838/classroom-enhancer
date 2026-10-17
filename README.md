@@ -1,3 +1,9 @@
+# 统一课堂助手 0.9.0
+
+当前推荐使用 [课堂工作台](https://classroom-enhancer-global-5rcwipvd.edgeone.dev/) 的统一 Userscripts 脚本，电脑与 iPad 共用，常规更新自动加载。[0.9 使用说明与验证范围](docs/IPAD_V0_9.md)。支持多视角自由布局、常驻公共播放栏、三路独立音频、浏览器 RNNoise 降噪和可选本机字幕；下载是独立操作。
+
+以下保留早期开发版安装说明。
+
 # Classroom Enhancer · v1 开发预览（0.3.0）
 
 在学校原云课堂上增加人声增强、全屏字幕、课前大纲和可点击知识点导航。不重新托管课堂视频，不默认调用付费 AI。

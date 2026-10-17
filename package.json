@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@edgeone/pages-blob": "^0.0.18",
+    "@jitsi/rnnoise-wasm": "0.2.1",
     "artplayer": "5.4.0"
   }
 }

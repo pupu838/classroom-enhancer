@@ -1,3 +1,4 @@
+import {installLocalCaption} from './local-caption.mjs';
 import {installCloud,cloudCall} from './cloud-client.mjs';
 import {remuxAudio} from './audio-remux.mjs';
 import {createRangeReader} from './media-range.mjs';
@@ -6,12 +7,14 @@ import {schoolVideoSources} from './school-video-sources.mjs';
 import {installMultiViewPlayer} from './multi-view-player.mjs';
 import {classroomLessonId} from './lesson-context.mjs';
 import {createSchoolMediaRequest} from './browser-media.mjs';
+import {remuxSparseAudio} from './sparse-audio.mjs';
+import {createAudioRangeSource} from './audio-range-source.mjs';
 const SCHOOL='https://ylb.nwafu.edu.cn';
 const PORTAL='https://classroom-enhancer-global-5rcwipvd.edgeone.dev';
 const PORTALS=new Set([PORTAL,'https://classroom-enhancer-workbench-1um3o2ms.edgeone.cool']);
 if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
  window.__CE_SCHOOL_CONNECTOR_V1__=true;
- const VERSION='0.8.1';
+ const VERSION='0.9.0';
  const TABLET=document.documentElement.dataset.ceTabletBridge==='1';
  let adapter=null,term=null,courses=new Map(),replays=new Map(),pair=null,busy=false,controller=null,stage='';
  const host=document.createElement('div');host.id='ce-course-connector';const root=host.attachShadow({mode:'open'});
@@ -19,6 +22,7 @@ if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
  document.documentElement.append(host);const $=id=>root.getElementById(id),panel=root.querySelector('section');
  if(TABLET){const target=document.getElementById('nwa-classroom-host')?.shadowRoot?.getElementById('ce-courses');if(target){target.append(host);host.style.cssText='position:static;display:block;font:inherit;color:inherit';$('toggle').hidden=true;panel.hidden=false;panel.style.cssText='width:100%;max-width:none;max-height:none;overflow:visible;margin:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;color:inherit';const style=document.createElement('style');style.textContent='button,select{color:#fff;background:#263044;border-color:#57657b}p.muted{color:#bcc9dc}label{border-color:#415068}h2{font-size:16px}section>h2{display:none}';root.append(style);}}
  const cloud=installCloud(root);
+ if(TABLET)installLocalCaption({workerSource:window.__CE_ASR_WORKER_SOURCE__,libraryURL:PORTAL+'/tablet/vendor/transformers-3.8.1.min.js',wasmBase:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0-dev.20250409-89f8206ba4/dist/'});
  const status=t=>{$('status').textContent=t;};
  $('toggle').onclick=()=>{panel.hidden=!panel.hidden;};
  function send(data){if(pair&&pair.source&&!pair.source.closed)pair.source.postMessage({ce:'school-connector-v1',channel:pair.channel,...data},pair.origin);}
@@ -89,21 +93,21 @@ if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
   return [...groups.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]))).map(([key,list])=>{const audible=list.filter(f=>Number(f.voiceStaus)===0).sort((a,b)=>Number(a.voicePriority??999)-Number(b.voicePriority??999));if(!audible.length)throw Error('该课次没有标注可用的发声音轨，请回学校播放器核对');return {key,url:mediaURL(audible[0])};});
  }
  let preparing=null;
- async function prepareLessonAudio(id,signal,onProgress=()=>{}){
-  if(preparing){if(preparing.id===id)return preparing.promise;throw Error('正在准备另一节课的音轨，请等待完成');}
+ async function prepareLessonAudio(id,signal,onProgress=()=>{},viewId){
+  if(preparing){if(preparing.id===id&&preparing.viewId===viewId)return preparing.promise;throw Error('正在准备另一节课的音轨，请等待完成');}
   const promise=(async()=>{adapter=getAdapter();if(!adapter)throw Error('请先完成学校登录');
    const detail=await adapter.request({url:adapter.cfg.teachingApi+'/v1/videoinfo/'+encodeURIComponent(id),type:'get',data:{validCode:code('id='+id+'&signKey=123123')}});
-   const segments=selectSegments(detail);if(segments.length!==1)throw Error('此课次含多个独立录制分段，暂不支持纯音轨增强');
+   const selected=viewId?schoolVideoSources(detail).views.find(view=>view.id===viewId):null;const segments=selected?[{url:selected.url}]:selectSegments(detail);if(segments.length!==1)throw Error('此课次含多个独立录制分段，暂不支持自动保存整段音轨');
    const url=segments[0].url,cached=await readAudio(id,url);if(signal?.aborted)throw Error('已取消准备');if(cached){onProgress('已读取本机缓存的纯音轨');return cached;}
    onProgress('正在准备纯音轨；原声继续播放，请保持页面在前台…');
-   const reader=await createRangeReader(url,mediaRequest,signal);
-   try{const blob=await remuxAudio(()=>reader.read(),p=>onProgress(`准备纯音轨 ${Math.min(99,Math.round(p.bytes/reader.total*100))}% · 原声继续播放`),signal);await saveAudio(id,url,blob);return blob;}finally{await reader.cancel();}
-  })();preparing={id,promise};try{return await promise;}finally{preparing=null;}
+   const source=createAudioRangeSource(url,mediaRequest,cloudCall,signal,onProgress);
+   const blob=await remuxSparseAudio(source,p=>onProgress(p.phase==='metadata'?'正在定位音轨目录；原声继续播放…':`准备纯音轨 ${p.percent}% · 原声继续播放`),signal);await saveAudio(id,url,blob);return blob;
+  })();preparing={id,viewId,promise};try{return await promise;}finally{preparing=null;}
  }
- if(TABLET)window.__CE_AUDIO_PREPARE__=(id,{signal,onProgress}={})=>{
+ if(TABLET)window.__CE_AUDIO_PREPARE__=(id,{signal,onProgress,viewId}={})=>{
   const current=classroomLessonId();
   if(!id||id!==current)return Promise.reject(Error('请先打开要收听的具体课次'));
-  return prepareLessonAudio(id,signal,onProgress);
+  return prepareLessonAudio(id,signal,onProgress,viewId);
  };
  if(TABLET)installMultiViewPlayer(async id=>{
   adapter=getAdapter();if(!adapter)throw Error('学校登录与视频资料尚未就绪');
@@ -113,7 +117,7 @@ if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
  async function addResult(name,blob,record,parts,subtitles=true){const url=URL.createObjectURL(blob),box=document.createElement('div'),title=document.createElement('p'),audio=document.createElement('audio'),a=document.createElement('a');title.textContent=name;audio.controls=true;audio.src=url;a.href=url;a.download=name;a.textContent=`保存音频 · ${(blob.size/1024/1024).toFixed(1)} MB`;box.append(title,audio,a);$('results').prepend(box);if(TABLET&&!subtitles)a.click();if(document.documentElement.dataset.ceTabletBridge!=='1')send({type:'audio',name,blob});if(subtitles){await cloud.offer(record,name,blob,parts);if(TABLET&&cloud.error)throw Error(cloud.error);}}
  async function extract(ids,{subtitles=TABLET}={}){
   if(busy)throw Error('已有提取任务正在运行');if(!Array.isArray(ids)||ids.length<1||ids.length>20||ids.some(id=>!replays.has(id)))throw Error('只能选择当前已列出的1～20个课次');
-  if(TABLET&&subtitles&&!(await cloudCall('settings')).configured)throw Error('请在“设置 → 连接或更换字幕服务”完成一次连接');busy=true;controller=new AbortController();$('extract').disabled=true;$('extract-audio').disabled=true;$('stop').disabled=false;
+  if(TABLET&&subtitles&&!(await cloudCall('settings')).configured)throw Error('请在“设置 → 连接或更换云端服务”完成一次连接');busy=true;controller=new AbortController();$('extract').disabled=true;$('extract-audio').disabled=true;$('stop').disabled=false;
   try{for(let i=0;i<ids.length;i++){
    if(controller.signal.aborted)throw Error('已取消提取');const record=replays.get(ids[i]);status(`正在获取第 ${i+1}/${ids.length} 课：${record.date}`);
    if(TABLET&&subtitles){const known=await cloudCall('lecture',{id:record.id});if(known.state==='complete'){status('本节字幕已完成，打开本节回放即可自动加载。');continue;}}

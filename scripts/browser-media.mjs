@@ -13,7 +13,9 @@ export function createSchoolMediaRequest(bridge,fetcher=(...args)=>fetch(...args
   signal?.addEventListener('abort',cancel,{once:true});
   const timeout=setTimeout(cancel,45000);
   try{
-   const options={credentials:'omit',mode:'cors',referrerPolicy:'origin',signal:controller.signal};
+   // Media cache can return 206 with the full recording Content-Length after a
+   // native player request. Bypass it for exact byte reads (observed on lzm12).
+   const options={credentials:'omit',mode:'cors',cache:'no-store',referrerPolicy:'origin',signal:controller.signal};
    let total=routes.get(url);
    if(!Number.isSafeInteger(total)){
     const head=await fetcher(url,{...options,method:'HEAD'});

@@ -11,6 +11,8 @@ const url='https://lzm15.nwafu.edu.cn/bkt-lanz-record/test.mp4',data=new Uint8Ar
 let bridges=0;
 const request=createSchoolMediaRequest(async()=>{bridges++;throw Error('Unexpected privileged request');},async(address,options)=>{
  assert.equal(address,url);assert.equal(options.referrerPolicy,'origin');assert.equal(options.credentials,'omit');calls.push(options);
+ // Reproduce lzm12's cached media response: 206 but whole-file length.
+ if(options.method!=='HEAD'&&options.cache!=='no-store')return new Response(data,{status:206,headers:{'content-length':'12'}});
  if(options.method==='HEAD')return new Response(null,{headers:{'content-length':'12'}});
  const [,start,end]=/bytes=(\d+)-(\d+)/.exec(options.headers.Range),bytes=data.slice(Number(start),Number(end)+1);
  // Same as the actual school host: Content-Range not exposed by CORS.

@@ -15,3 +15,5 @@ cloud-data/
 !cloud/.env.example
 
 .edgeone/
+
+.playwright-cli/

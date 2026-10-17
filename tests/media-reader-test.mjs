@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {readSchoolMedia} from '../cloud/media-reader.mjs';
+import {createService} from '../cloud/tablet-service.mjs';
+const url='https://lzm15.nwafu.edu.cn/bkt-lanz-record/a.mp4',data=new Uint8Array(2000).map((_,i)=>i%251),calls=[];
+const fetcher=async(address,options)=>{calls.push(options);assert.equal(address,url);assert.equal(options.redirect,'manual');assert.equal(options.headers.Referer,'https://ylb.nwafu.edu.cn/');const m=/bytes=(\d+)-(\d+)/.exec(options.headers.Range),start=Number(m[1]),end=Math.min(data.length-1,Number(m[2]));return new Response(data.slice(start,end+1),{status:206,headers:{'content-range':`bytes ${start}-${end}/${data.length}`}});};
+let reply=await readSchoolMedia({url,ranges:[{start:0,end:9},{start:1000,end:1009}]},fetcher);assert.equal(calls.length,1);assert.deepEqual(Buffer.from(reply.parts[1].data,'base64'),Buffer.from(data.slice(1000,1010)));assert.equal(reply.fetchedBytes,1010);
+for(const body of [{url:'https://127.0.0.1/a.mp4',ranges:[{start:0,end:1}]},{url,ranges:[{start:0,end:4},{start:4,end:7}]},{url,ranges:[{start:0,end:3*1024*1024}]},{url,ranges:[{start:0,end:3},{start:300*1024*1024,end:300*1024*1024+3}]}])await assert.rejects(readSchoolMedia(body,fetcher));
+let cancelled=false;await assert.rejects(readSchoolMedia({url,ranges:[{start:0,end:9}]},async()=>({status:302,body:{cancel:async()=>cancelled=true}})),/HTTP 302/);assert(cancelled);
+const service=createService({store:{},asr:new Proxy({},{get:()=>{throw Error('ASR must not be called');}}),secret:'fixture-secret',origin:'https://test.example',fetcher});
+const request=secret=>new Request('https://test.example/api/classroom?op=init',{method:'POST',headers:{authorization:'Bearer '+secret},body:JSON.stringify({mode:'media-read',url,ranges:[{start:0,end:9}]})});
+await assert.rejects(service(request('wrong')),e=>e.status===401);reply=await service(request('fixture-secret'));assert.equal(reply.protocol,'media-read/1');
+console.log('PASS authenticated school-only AAC range relay, merged upstream reads, byte extraction, caps, overlap/SSRF/redirect rejection and no ASR invocation');
