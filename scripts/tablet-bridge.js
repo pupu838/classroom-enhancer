@@ -25,7 +25,7 @@
    const cap=8*1024*1024;let tooLarge=false;
    const pending=GM.xmlHttpRequest({url:url.href,method:'GET',headers:{Range:`bytes=${d.start}-${d.end}`},responseType:'arraybuffer',timeout:90000,onprogress:p=>{if(p.loaded>cap){tooLarge=true;mediaRequests.get(d.requestId)?.abort();}}});
    mediaRequests.set(d.requestId,pending);
-   let result;try{result=await pending;}catch(e){if(tooLarge)throw Error('媒体服务器忽略了分段请求，无法安全读取此视频');throw e;}finally{mediaRequests.delete(d.requestId);}
+   let result;try{result=await pending;}catch(e){if(tooLarge)throw Error('媒体服务器忽略了分段请求，无法安全读取此视频');throw Error('Userscripts 未能读取学校媒体。请在 Safari 扩展设置中允许 Userscripts 访问所有网站，并确认学校原播放器能播放。');}finally{mediaRequests.delete(d.requestId);}
    const bytes=result.response;
    if(!(bytes instanceof ArrayBuffer)||bytes.byteLength>cap)throw Error('媒体服务器返回的数据格式异常');
    const range=String(result.responseHeaders||'').split(/\r?\n/).find(line=>/^content-range\s*:/i.test(line))?.replace(/^content-range\s*:\s*/i,'').trim()||'';
