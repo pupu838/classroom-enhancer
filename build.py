@@ -3,6 +3,7 @@ import json
 p=Path(__file__).parent
 worklet=(p/'denoise-worklet.js').read_text(encoding='utf-8')
 core=(p/'core.js').read_text(encoding='utf-8').replace('__WORKLET_SOURCE__',json.dumps(worklet)).replace('__TRANSCRIPT_MODULE__',(p/'transcript.js').read_text(encoding='utf-8')).replace('__LEARNING_MODULE__',(p/'learning.js').read_text(encoding='utf-8'))
+core=core.replace('__AUDIO_SYNC__',(p/'audio-sync.js').read_text(encoding='utf-8'))
 (p/'edge').mkdir(exist_ok=True)
 (p/'edge/content.js').write_text(core,encoding='utf-8',newline='\n')
 (p/'edge/denoise-worklet.js').write_text(worklet,encoding='utf-8',newline='\n')

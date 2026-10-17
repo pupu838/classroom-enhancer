@@ -2,7 +2,7 @@
 function installTranscript(shadow,getVideo) {
  const $=id=>shadow.getElementById(id),section=document.createElement('section');section.id='ce-transcript';
  section.innerHTML=`<h3>课堂字幕数据</h3><button id="ct-cloud">刷新云端字幕</button><div id="ct-chapters"></div><p id="ct-lesson" class="note"></p><label>导入课堂数据包<input id="ct-file" type="file" accept=".json,application/json"></label><label>字幕来源<select id="ct-source"><option value="school">学校网页字幕</option></select></label><label>字幕延后秒数<input id="ct-offset" type="number" min="-30" max="30" step="0.1" value="0" style="width:80px"></label><p id="ct-info" class="note">未导入数据包；学校字幕尚未核验。</p><details><summary>复核当前字幕</summary><p id="ct-original" class="note"></p><textarea id="ct-edit" aria-label="修订当前字幕" style="width:100%;height:70px"></textarea><label><input id="ct-reviewed" type="checkbox">我已对照音频核对这句话</label><button id="ct-current">读取当前句</button><button id="ct-save">另存修订</button></details><div class="row"><button id="ct-export">导出字幕数据包</button><button id="ct-metadata">导出课次信息</button></div><p id="ct-message" class="note" role="status"></p><hr>`;
- $('panel').prepend(section);
+ const target=$('ce-subtitles');if(document.documentElement.dataset.ceTabletBridge==='1'&&target)target.append(section);else $('panel').prepend(section);
  let key='',pack=null,selected='school',offset=0,token=0,editing=null,fingerprint='',listeners=[],lastIdentity='',restore=0;
  const lesson=()=>{const params=new URLSearchParams(location.hash.split('?')[1]||'');return params.get('id')||params.get('videoId')||location.pathname+location.hash.split('?')[0];};
  const message=s=>$('ct-message').textContent=s;

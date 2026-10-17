@@ -6,7 +6,7 @@ export function cloudCall(op,extra={}){
  });
 }
 export function installCloud(root){
- const box=document.createElement('div'),heading=document.createElement('h3'),info=document.createElement('p'),list=document.createElement('div');heading.textContent='云端字幕流水线';info.textContent='电脑版可在扩展设置中连接私有处理服务。';box.append(heading,info,list);root.querySelector('section').append(box);
+ const box=document.createElement('div'),heading=document.createElement('h3'),info=document.createElement('p'),list=document.createElement('div');heading.textContent='字幕进度';info.textContent=document.documentElement.dataset.ceTabletBridge==='1'?'选好课次后自动提交；连接服务请打开“设置”。':'电脑版可在扩展设置中连接私有处理服务。';box.append(heading,info,list);root.querySelector('section').append(box);
  let failure=null;const status=text=>{info.textContent=text;};
  async function offer(record,name,blob,parts){
   const line=document.createElement('div'),button=document.createElement('button'),retry=document.createElement('button');button.textContent='上传并制作字幕';retry.textContent='重试后台处理';retry.hidden=true;line.append(document.createTextNode(name),button,retry);list.prepend(line);let job=null;
