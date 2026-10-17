@@ -1,5 +1,6 @@
 import Artplayer from 'artplayer';
 import {createMultiViewSync} from './multi-view-sync.mjs';
+import {classroomLessonId} from './lesson-context.mjs';
 
 const css=`
 .ce-native-hidden{display:none!important}#ce-multiview{width:100%;background:#101621;border:1px solid #354358;border-radius:12px;overflow:hidden;color:#f5f7fb;font:14px system-ui;position:relative}
@@ -18,7 +19,7 @@ const css=`
 #ce-multiview.nwa-stage{display:flex;flex-direction:column}#ce-multiview.nwa-stage .ce-player-stage{flex:1;min-height:0;aspect-ratio:auto}#ce-multiview.nwa-stage .ce-view-toolbar{flex-shrink:0}
 @media(max-width:600px){#ce-multiview .ce-view-toolbar{gap:5px;padding:7px}#ce-multiview button,#ce-multiview select{font-size:12px;padding:8px}#ce-multiview .ce-player-stage{min-height:205px}}
 `;
-const lessonId=()=>new URLSearchParams(location.hash.split('?')[1]||'').get('id');
+const lessonId=()=>classroomLessonId();
 
 function originalRegions(videos){
  let common=videos[0]?.parentElement;
@@ -117,12 +118,16 @@ export function installMultiViewPlayer(getSources){
   if(dead)return;const id=lessonId();
   if(current&&current.id!==id){current.api.dispose();current=null;}
   if(current&&!current.api.container.isConnected){current.api.dispose();current=null;blockedLesson=null;lastAttempt=0;}
-  if(!id||current||pending||!force&&(blockedLesson===id||Date.now()-lastAttempt<10000))return;
-  const originals=[...document.querySelectorAll('video')].filter(video=>!video.closest('#ce-multiview'));if(!originals.some(video=>video.currentSrc||video.src))return;
+  if(!id){if(force)throw Error('未识别到当前课次，请从课程列表进入一节回放');return;}
+  if(current)return;
+  if(pending){if(force)throw Error('正在读取视频资料，请稍候再试');return;}
+  if(!force&&(blockedLesson===id||Date.now()-lastAttempt<10000))return;
+  const originals=[...document.querySelectorAll('video')].filter(video=>!video.closest('#ce-multiview'));if(!originals.some(video=>video.currentSrc||video.src)){if(force)throw Error('学校视频地址尚未加载，请先在原播放器点一次播放');return;}
   lastAttempt=Date.now();const ticket={id};pending=ticket;
-  try{const sources=await getSources(id);if(dead||lessonId()!==id)return;const api=await mountMultiViewPlayer({sources,originalVideos:originals,onRestore:({message})=>{blockedLesson=id;current=null;if(message)document.documentElement.dataset.cePlayerMessage=message;}});if(dead||lessonId()!==id){api.dispose();return;}current={id,api};}
-  catch(error){document.documentElement.dataset.cePlayerMessage=error.message;}
-  finally{if(pending===ticket)pending=null;}
+  let timeout;
+  try{const sources=await Promise.race([getSources(id),new Promise((resolve,reject)=>{timeout=setTimeout(()=>reject(Error('学校视频资料读取超时，请稍后重试')),15000);})]);clearTimeout(timeout);if(dead||lessonId()!==id)return;const api=await mountMultiViewPlayer({sources,originalVideos:originals,onRestore:({message})=>{blockedLesson=id;current=null;if(message)document.documentElement.dataset.cePlayerMessage=message;}});if(dead||lessonId()!==id){api.dispose();return;}current={id,api};}
+  catch(error){document.documentElement.dataset.cePlayerMessage=error.message;if(force)throw error;}
+  finally{clearTimeout(timeout);if(pending===ticket)pending=null;}
  }
  window.__CE_RETRY_PLAYER__=()=>{blockedLesson=null;lastAttempt=0;return check(true);};
  const timer=setInterval(()=>check(),750);window.addEventListener('pagehide',()=>{dead=true;clearInterval(timer);current?.api.dispose();},{once:true});check();

@@ -1,4 +1,4 @@
-# 课堂助手0.8.0：三路同步回放
+# 课堂助手0.8.1：三路同步回放
 
 安装页：https://classroom-enhancer-global-5rcwipvd.edgeone.dev/
 
