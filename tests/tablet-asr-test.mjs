@@ -1,0 +1,3 @@
+import assert from 'node:assert/strict';import {asrClient} from '../cloud/tencent-asr.mjs';let body;
+const client=asrClient('fixture-id','fixture-secret',async(url,options)=>{body=options.body;assert.match(options.headers.Authorization,/^TC3-HMAC-SHA256 Credential=fixture-id\//);return new Response('{"Response":{"Data":{"TaskId":18446744073709551612}}}');});
+const result=await client.CreateRecTask({SourceType:1});assert.equal(result.Data.TaskId,'18446744073709551612');await client.DescribeTaskStatus({TaskId:result.Data.TaskId});assert.equal(body,'{"TaskId":18446744073709551612}');console.log('PASS ASR signing interface and lossless uint64 task IDs.');

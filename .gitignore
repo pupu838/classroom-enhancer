@@ -13,3 +13,5 @@ cloud-data/
 .env
 .env.*
 !cloud/.env.example
+
+.edgeone/

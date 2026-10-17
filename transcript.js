@@ -39,17 +39,18 @@ function installTranscript(shadow,getVideo) {
 
  let cloudBusy=false;
  async function fetchCloud(){
-  if(cloudBusy||typeof chrome==='undefined'||!chrome.runtime?.sendMessage||!/^[-A-Za-z0-9_]{1,200}$/.test(key))return;
+  const tablet=document.documentElement.dataset.ceTabletBridge==='1';
+  if(cloudBusy||(!tablet&&(typeof chrome==='undefined'||!chrome.runtime?.sendMessage))||!/^[-A-Za-z0-9_]{1,200}$/.test(key))return;
   cloudBusy=true;const expected=key;
   try{
-   const response=await new Promise((resolve,reject)=>chrome.runtime.sendMessage({ceCloud:1,op:'lecture',id:expected},r=>{const e=chrome.runtime.lastError;if(e)reject(Error(e.message));else resolve(r);}));
+   const response=tablet?await new Promise((resolve,reject)=>{const requestId=crypto.randomUUID(),timer=setTimeout(()=>{window.removeEventListener('message',receive);reject(Error('字幕服务连接超时'));},65000);function receive(e){const d=e.data;if(e.source!==window||e.origin!==location.origin||d?.ce!=='cloud-response'||d.requestId!==requestId)return;clearTimeout(timer);window.removeEventListener('message',receive);resolve(d);}window.addEventListener('message',receive);window.postMessage({ce:'cloud-request',requestId,op:'lecture',id:expected},location.origin);}):await new Promise((resolve,reject)=>chrome.runtime.sendMessage({ceCloud:1,op:'lecture',id:expected},r=>{const e=chrome.runtime.lastError;if(e)reject(Error(e.message));else resolve(r);}));
    if(key!==expected)return;if(!response?.ok)throw Error(response?.error||'未连接云端字幕服务');
    if(response.data.state!=='complete'){message('云端字幕：'+response.data.state+(response.data.error?' · '+response.data.error:''));return;}
    const ready=validate(response.data.package),fp=await hash(ready);if(key!==expected)return;
    // Keep manual revisions. Cloud refresh never overwrites a different local revision silently.
    if(pack?.tracks.some(t=>t.kind==='revised'&&t.id!=='textbook-corrected')){message('云端字幕已就绪；当前有手动修订，保留本机版本。');return;}
    if(pack?.packageId===ready.packageId&&fingerprint===fp)return;
-   pack=ready;fingerprint=fp;selected=pack.tracks.some(t=>t.id==='textbook-corrected')?'textbook-corrected':pack.tracks[0].id;paint();changed();await persist();message('已加载云端校正字幕与章节；点击章节跳转。');
+   pack=ready;fingerprint=fp;selected=pack.tracks.some(t=>t.id==='textbook-corrected')?'textbook-corrected':pack.tracks[0].id;paint();changed();await persist();message(selected==='textbook-corrected'?'已加载云端校正字幕与章节；点击章节跳转。':'已加载云端识别字幕；尚未经教材校正或人工核听。');
   }catch(e){if(key===expected)message(e.message);}finally{cloudBusy=false;}
  }
  $('ct-cloud').onclick=fetchCloud;

@@ -12,8 +12,12 @@
     "test:cloud-player": "node tests/cloud-player-test.cjs"
   },
   "devDependencies": {
-    "playwright": "^1.58.2",
+    "esbuild": "^0.25.12",
     "jsdom": "^27.0.0",
-    "mp4box": "2.3.0"
+    "mp4box": "2.3.0",
+    "playwright": "^1.58.2"
+  },
+  "dependencies": {
+    "@edgeone/pages-blob": "^0.0.18"
   }
 }

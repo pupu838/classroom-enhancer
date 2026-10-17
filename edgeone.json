@@ -1,0 +1,1 @@
+{"buildCommand": "python build.py && node scripts/build-tablet.mjs", "outputDirectory": "portal", "cloudFunctions": {"maxDuration": 120}, "overseasRegions": ["ap-singapore"]}
