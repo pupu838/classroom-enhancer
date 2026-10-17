@@ -1,11 +1,12 @@
 import {installCloud,cloudCall} from './cloud-client.mjs';
 import {remuxAudio} from './audio-remux.mjs';
+import {createRangeReader} from './media-range.mjs';
 const SCHOOL='https://ylb.nwafu.edu.cn';
 const PORTAL='https://classroom-enhancer-global-5rcwipvd.edgeone.dev';
 const PORTALS=new Set([PORTAL,'https://classroom-enhancer-workbench-1um3o2ms.edgeone.cool']);
 if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
  window.__CE_SCHOOL_CONNECTOR_V1__=true;
- const VERSION='0.6.0';
+ const VERSION='0.6.1';
  const TABLET=document.documentElement.dataset.ceTabletBridge==='1';
  let adapter=null,term=null,courses=new Map(),replays=new Map(),pair=null,busy=false,controller=null,stage='';
  const host=document.createElement('div');host.id='ce-course-connector';const root=host.attachShadow({mode:'open'});
@@ -65,6 +66,16 @@ if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
   }finally{syncing=false;}
  }
  function mediaURL(f){const value=String(f.outerIp||'')+String(f.videoStorePath||'');const u=new URL(value);if(u.protocol!=='https:'||!/^lzm\d+\.nwafu\.edu\.cn$/.test(u.hostname)||u.port||u.username||u.password||u.search||u.hash||!/^\/bkt-lanz-record\/[A-Za-z0-9_./-]+\.mp4$/.test(u.pathname))throw Error('学校返回了不支持的媒体地址');return u.href;}
+ function mediaRequest(url,start,end,signal){return new Promise((resolve,reject)=>{
+  if(signal?.aborted){reject(Error('已取消提取'));return;}
+  const requestId=crypto.randomUUID();let settled=false;
+  const finish=(error,value)=>{if(settled)return;settled=true;clearTimeout(timer);window.removeEventListener('message',receive);signal?.removeEventListener('abort',cancel);error?reject(error):resolve(value);};
+  const receive=event=>{const d=event.data;if(event.source!==window||event.origin!==SCHOOL||d?.ce!=='media-response'||d.requestId!==requestId)return;finish(d.ok?null:Error(d.error||'媒体读取失败'),d);};
+  const cancel=()=>{window.postMessage({ce:'media-request',requestId,cancel:true},SCHOOL);finish(Error('已取消提取'));};
+  const timer=setTimeout(()=>finish(Error('媒体分段读取超时')),100000);
+  window.addEventListener('message',receive);signal?.addEventListener('abort',cancel,{once:true});
+  window.postMessage({ce:'media-request',requestId,url,start,end},SCHOOL);
+ });}
  function selectSegments(detail){
   const files=[...(detail.teacherViewFiles||[]),...(detail.studentViewFiles||[]),...(detail.vgaViewFiles||[])];const groups=new Map();
   for(const f of files){const key=f.startTime||f.serialNum||'first';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(f);}
@@ -80,12 +91,11 @@ if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
    stage='选择音轨';const segments=selectSegments(detail);if(!segments.length)throw Error('没有可用的媒体分段');if(document.documentElement.dataset.ceTabletBridge==='1'&&segments.length!==1)throw Error('此课次有多个独立录制分段，暂不支持自动字幕，请先选单段课次测试');
    for(let j=0;j<segments.length;j++){
     stage='连接媒体服务器';status(`正在连接媒体服务器 · 分段 ${j+1}/${segments.length}…`);send({type:'progress',text:$('status').textContent,percent:0});
-    let timedOut=false;let timeout=setTimeout(()=>{timedOut=true;controller?.abort();},45000);
-    let response;try{response=await fetch(segments[j].url,{mode:'cors',credentials:'omit',referrerPolicy:'origin',signal:controller.signal});}catch(e){if(timedOut)throw Error('媒体服务器45秒未响应');throw e;}finally{clearTimeout(timeout);}
-    if(!response.ok)throw Error('媒体请求失败 HTTP '+response.status);if(!response.headers.get('content-type')?.includes('video/mp4'))throw Error('服务器未返回 MP4');
-    const length=Number(response.headers.get('content-length'));if(length>800*1024*1024)throw Error('该视频超过浏览器800MB处理上限，需要云端处理');
-    if(!response.body?.getReader)throw Error('浏览器不支持流式读取，请更新 Safari 或 Edge');const reader=response.body.getReader();let bytes=0;stage='下载并解析音轨';
-    try{const blob=await remuxAudio(async()=>{let stalled=false;const idle=setTimeout(()=>{stalled=true;controller?.abort();},45000);let result;try{result=await reader.read();}catch(e){if(stalled)throw Error('媒体下载45秒没有收到新数据');throw e;}finally{clearTimeout(idle);}if(!result.done){bytes+=result.value.byteLength;if(bytes>800*1024*1024)throw Error('媒体超过浏览器处理上限');}return result;},p=>{const pct=length?Math.min(99,Math.round(p.bytes/length*100)):0;$('progress').value=pct;status(`第 ${i+1}/${ids.length} 课 · 分段 ${j+1}/${segments.length} · 已读取 ${(p.bytes/1024/1024).toFixed(1)} MB`);send({type:'progress',text:$('status').textContent,percent:pct});},controller.signal);
+    let reader,length;
+    if(TABLET){reader=await createRangeReader(segments[j].url,mediaRequest,controller.signal);length=reader.total;}
+    else{let timedOut=false;const timeout=setTimeout(()=>{timedOut=true;controller?.abort();},45000);let response;try{response=await fetch(segments[j].url,{mode:'cors',credentials:'omit',referrerPolicy:'origin',signal:controller.signal});}catch(e){if(timedOut)throw Error('媒体服务器45秒未响应');throw e;}finally{clearTimeout(timeout);}if(!response.ok)throw Error('媒体请求失败 HTTP '+response.status);if(!response.headers.get('content-type')?.includes('video/mp4'))throw Error('服务器未返回 MP4');length=Number(response.headers.get('content-length'));if(length>800*1024*1024)throw Error('该视频超过浏览器800MB处理上限，需要云端处理');if(!response.body?.getReader)throw Error('浏览器不支持流式读取，请更新 Safari 或 Edge');reader=response.body.getReader();}
+    let bytes=0;stage='下载并解析音轨';
+    try{const blob=await remuxAudio(async()=>{let stalled=false;const idle=setTimeout(()=>{stalled=true;controller?.abort();},90000);let result;try{result=await reader.read();}catch(e){if(stalled)throw Error('媒体下载90秒没有收到新数据');throw e;}finally{clearTimeout(idle);}if(!result.done){bytes+=result.value.byteLength;if(!TABLET&&bytes>800*1024*1024)throw Error('媒体超过浏览器处理上限');}return result;},p=>{const pct=length?Math.min(99,Math.round(p.bytes/length*100)):0;$('progress').value=pct;status(`第 ${i+1}/${ids.length} 课 · 分段 ${j+1}/${segments.length} · 已读取 ${(p.bytes/1024/1024).toFixed(1)} MB`);send({type:'progress',text:$('status').textContent,percent:pct});},controller.signal);
      const name=(record.name+'_'+record.date+`_第${j+1}段`).replace(/[\\/:*?"<>|]/g,'_').slice(0,140)+'.m4a';await addResult(name,blob,record,segments.length);
     }finally{await reader.cancel().catch(()=>{});}
    }
