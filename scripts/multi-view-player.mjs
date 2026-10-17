@@ -40,6 +40,8 @@ const css=`
 #ce-multiview .ce-transport{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;background:#182335;flex-shrink:0;z-index:10;position:relative}
 #ce-multiview .ce-transport button{min-width:44px;min-height:44px}#ce-multiview .ce-seek{flex:1;min-width:120px;height:32px;accent-color:#fb7299;touch-action:pan-x}
 #ce-multiview .ce-time{font-variant-numeric:tabular-nums;font-size:12px}#ce-multiview .ce-audio-track{max-width:150px}#ce-multiview .art-bottom{display:none!important}
+#ce-multiview{display:flex;flex-direction:column}#ce-multiview .ce-player-stage{flex:0 1 auto;min-height:120px}
+#ce-multiview:fullscreen,#ce-multiview:-webkit-full-screen,#ce-multiview.nwa-stage{max-height:none!important}
 `;
 const lessonId=()=>classroomLessonId();
 
@@ -77,6 +79,7 @@ export async function mountMultiViewPlayer({sources,originalVideos,PlayerClass=A
  function render(){
   const count=selected.length;root.dataset.count=String(count);grid.dataset.count=String(count);
   const result=viewRects(selected,layout,window.innerHeight>window.innerWidth);root.dataset.layout=result.arrangement;stage.style.aspectRatio=String(result.aspect/(layout.height/100));root.classList.toggle('ce-layout-editing',!tools.hidden&&layout.arrangement==='free');
+  root.style.maxHeight=Math.max(300,window.innerHeight-Math.max(0,root.getBoundingClientRect().top)-12)+'px';
   for(const view of views){const cell=cells.get(view.id),order=selected.indexOf(view.id);cell.classList.toggle('ce-clock-hidden',order<0&&view.id===primary.id);cell.hidden=order<0&&view.id!==primary.id;cell.dataset.order=String(order);cell.style.order=String(Math.max(0,order));angleButtons.get(view.id)?.setAttribute('aria-pressed',String(order>=0));const r=result.rects[view.id];if(r)Object.assign(cell.style,{left:r.x+'%',top:r.y+'%',width:r.w+'%',height:r.h+'%'});}
   const previous=orderView.value;orderView.replaceChildren(...selected.map(id=>{const option=document.createElement('option');option.value=id;option.textContent=sources.views.find(view=>view.id===id).label;return option;}));if(selected.includes(previous))orderView.value=previous;
   layout.selected=[...selected];layout.mode=mode.value;try{localStorage.setItem(layoutKey,JSON.stringify(layout));}catch{}
