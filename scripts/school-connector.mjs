@@ -15,7 +15,7 @@ const PORTAL='https://classroom-enhancer-global-5rcwipvd.edgeone.dev';
 const PORTALS=new Set([PORTAL,'https://classroom-enhancer-workbench-1um3o2ms.edgeone.cool']);
 if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
  window.__CE_SCHOOL_CONNECTOR_V1__=true;
- const VERSION='0.9.1';
+ const VERSION='0.9.2';
  const TABLET=document.documentElement.dataset.ceTabletBridge==='1';
  let adapter=null,term=null,courses=new Map(),replays=new Map(),pair=null,busy=false,controller=null,stage='';
  const host=document.createElement('div');host.id='ce-course-connector';const root=host.attachShadow({mode:'open'});

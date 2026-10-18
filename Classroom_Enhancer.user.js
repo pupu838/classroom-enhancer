@@ -27,11 +27,18 @@ function classroomLessonId(scope=window){
  return null;
 }
 
+// Public controls describe audible filtering; they do not claim to remove reverb.
+const audioDefaults={gain:3,strength:.7,highpass:100,lowpass:6500,bass:0,body:0,presence:2,treble:0,ceiling:-8};
+const ranges={gain:[-12,15],strength:[0,1],highpass:[20,400],lowpass:[3000,20000],bass:[-12,12],body:[-12,12],presence:[-12,12],treble:[-12,12],ceiling:[-18,-1]};
+function normalizeAudio(values={},base=audioDefaults){const out={};for(const [key,[min,max]] of Object.entries(ranges)){const n=Number(values[key]??base[key]);out[key]=Math.max(min,Math.min(max,Number.isFinite(n)?n:audioDefaults[key]));}return out;}
+const audioPresets={flat:{gain:0,strength:0,highpass:20,lowpass:20000,bass:0,body:0,presence:0,treble:0,ceiling:-1},gentle:{gain:1,strength:.25,highpass:70,lowpass:7800,bass:0,body:-2,presence:0,treble:-1,ceiling:-4},speech:{gain:2,strength:.5,highpass:120,lowpass:7200,bass:-2,body:-4,presence:3,treble:0,ceiling:-5}};
+
 const TABLET=document.documentElement.dataset.ceTabletBridge==='1';
 const KEY='nwa-classroom-enhancer-v1';
-const defaults={size:28,x:50,y:84,opacity:65,color:'#ffffff',captions:true,gain:3,strength:.7};
+const defaults={size:28,x:50,y:84,opacity:65,color:'#ffffff',captions:true,gain:3,strength:.7,...(TABLET?audioDefaults:{})};
 let cfg={...defaults};try{cfg={...cfg,...JSON.parse(localStorage.getItem(KEY)||'{}')}}catch{}
 cfg.strength=Math.max(0,Math.min(2,Number(cfg.strength)||0));
+if(TABLET)Object.assign(cfg,normalizeAudio(cfg));
 let rootVideo=null,anchor=null,audioState=null,pending=false,epoch=0,lastRoute=location.hash,audioPreparation=null;
 const host=document.createElement('div');host.id='nwa-classroom-host';
 const shadow=host.attachShadow({mode:'open'});
@@ -53,10 +60,11 @@ ${TABLET?'#open{top:auto;bottom:14px}#panel{top:auto;bottom:62px;width:420px;max
 <nav id="ce-nav" ${TABLET?'':'hidden'}><button data-tab="ce-listen" aria-selected="true">听课</button><button data-tab="ce-library" aria-selected="false">课程与字幕</button><button data-tab="ce-settings" aria-selected="false">设置</button></nav>
 <div id="ce-listen"><h3>声音调整</h3>
 
-<label>增益 <span id="gainVal"></span><input id="gain" type="range" min="0" max="15" step="1"></label>
+<label>增益 <span id="gainVal"></span><input id="gain" type="range" min="${TABLET?-12:0}" max="15" step="1"></label>
 <label>${TABLET?"降噪强度（试验）":"降噪强度"}<input id="strength" type="range" min="0" max="${TABLET?1:2}" step="0.1"></label>
-<div class="row"><button id="audio">${TABLET?'开启降噪（试验）':'启用音频增强'}</button><button id="noise" disabled>采样底噪 1.5 秒</button>${TABLET?'<button id="ce-audio-download">保存本节音频</button><a id="ce-audio-download-link" hidden style="color:#b9ddff">音频已准备，点此保存</a>':''}</div>
+<div class="row"><button id="audio">${TABLET?'开启声音调整':'启用音频增强'}</button><button id="noise" disabled>采样底噪 1.5 秒</button>${TABLET?'<button id="ce-audio-download">保存本节音频</button><a id="ce-audio-download-link" hidden style="color:#b9ddff">音频已准备，点此保存</a>':''}</div>
 <p class="note">${TABLET?'可在公共控制栏切换三路原声音频。现有降噪未达到课堂听清目标，仅保留试验开关，默认关闭；不保证提升人声清晰度。下载音频是独立功能。':'先启用音频增强。采样时应只有背景噪声，没有老师讲话。低强度更自然；无法恢复录音里没录清的词。'}</p>
+${TABLET?`<details id="ce-audio-tuning"><summary>自己调声音</summary><p class="note">先开启声音调整，再移动滑块试听。降噪强度控制处理声与原声的比例；这些调节不能保证消除教室混响。设置会自动保存。</p><div class="row"><button data-audio-preset="flat">平直</button><button data-audio-preset="gentle">轻度处理</button><button data-audio-preset="speech">突出人声</button><button id="ce-audio-ab">对比原声</button></div>${[['highpass','低切','20','400','10','Hz'],['lowpass','高切','3000','20000','100','Hz'],['bass','低频','-12','12','1','dB'],['body','低中频','-12','12','1','dB'],['presence','人声频段','-12','12','1','dB'],['treble','高频','-12','12','1','dB'],['ceiling','压缩起点','-18','-1','1','dB']].map(([key,label,min,max,step,unit])=>`<label>${label} <output id="${key}Val"></output><input id="${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" data-unit="${unit}"></label>`).join('')}<div class="row"><button id="ce-audio-export">导出设置</button><button id="ce-audio-import">载入设置</button><button data-audio-preset="default">重置声音</button></div><textarea id="ce-audio-config" aria-label="声音设置" rows="3" style="width:100%;background:#0c1728;color:#fff" placeholder="导出后可复制；也可粘贴以前保存的声音设置"></textarea></details>`:''}
 ${TABLET?'<hr><h3>课堂字幕</h3><button id="ce-local-caption" disabled>本机字幕已停用</button><p id="ce-local-status" class="note" role="status">本机识别在 iPad 上出现发热和页面重载，已停用。整课云端字幕请到“课程与字幕”。</p><div class="row"><button id="ce-cloud-current">生成本节云端字幕</button><button id="ce-cloud-check">查询进度</button><button id="ce-cloud-cancel" disabled>停止上传</button></div><p id="ce-cloud-status" class="note" role="status">打开具体课次后，可一键提交整课字幕；上传完成后可以关闭页面。</p><button id="ce-cloud-captions">批量选择课程与字幕</button>':''}<div id="status" role="status">等待视频与网站字幕。</div><hr><details ${TABLET?'':'open'}><summary>字幕与全屏设置</summary>
 <label>显示字幕<input id="captions" type="checkbox"></label>
 <label>字号 <span id="sizeVal"></span><input id="size" type="range" min="16" max="64" step="1"></label>
@@ -73,8 +81,15 @@ const css=document.createElement('style');css.textContent=`.nwa-stage{position:f
 let stage=null;let captionDetected=false;
 function save(){try{localStorage.setItem(KEY,JSON.stringify(cfg))}catch{}}
 function status(t){$('status').textContent=t;}
-function paint(){const c=$('caption');c.style.fontSize=cfg.size+'px';c.style.color=cfg.color;c.style.background=`rgba(0,0,0,${1-cfg.opacity/100})`;c.hidden=!cfg.captions;$('sizeVal').textContent=cfg.size;$('gainVal').textContent=cfg.gain+' dB';position();}
-for(const k of Object.keys(defaults)){const el=$(k);if(!el)continue;if(el.type==='checkbox')el.checked=cfg[k];else el.value=cfg[k];el.addEventListener('input',()=>{cfg[k]=el.type==='checkbox'?el.checked:el.type==='color'||el.tagName==='SELECT'?el.value:Number(el.value);save();paint();window.__CE_LIVE_AUDIO__?.update({gain:cfg.gain,strength:cfg.strength});if(audioState){audioState.gain.gain.setTargetAtTime(10**(cfg.gain/20),audioState.ctx.currentTime,.04);audioState.worklet?.port.postMessage({type:'strength',value:cfg.strength});}});}
+function paint(){const c=$('caption');c.style.fontSize=cfg.size+'px';c.style.color=cfg.color;c.style.background=`rgba(0,0,0,${1-cfg.opacity/100})`;c.hidden=!cfg.captions;$('sizeVal').textContent=cfg.size;$('gainVal').textContent=cfg.gain+' dB';for(const key of Object.keys(audioDefaults)){const label=$(key+'Val'),input=$(key);if(label&&input?.dataset.unit)label.textContent=cfg[key]+' '+input.dataset.unit;}position();}
+for(const k of Object.keys(defaults)){const el=$(k);if(!el)continue;if(el.type==='checkbox')el.checked=cfg[k];else el.value=cfg[k];el.addEventListener('input',()=>{cfg[k]=el.type==='checkbox'?el.checked:el.type==='color'||el.tagName==='SELECT'?el.value:Number(el.value);save();paint();window.__CE_LIVE_AUDIO__?.update(cfg);if(audioState){audioState.gain.gain.setTargetAtTime(10**(cfg.gain/20),audioState.ctx.currentTime,.04);audioState.worklet?.port.postMessage({type:'strength',value:cfg.strength});}});}
+if(TABLET){
+ function applyAudio(values){Object.assign(cfg,normalizeAudio(values));for(const key of Object.keys(audioDefaults))if($(key))$(key).value=cfg[key];save();paint();window.__CE_LIVE_AUDIO__?.update(cfg);status('声音设置已保存'+(window.__CE_LIVE_AUDIO__?.state().enhanced?'。':'，请开启声音调整试听。'));}
+ for(const button of shadow.querySelectorAll('[data-audio-preset]'))button.onclick=()=>applyAudio(button.dataset.audioPreset==='default'?audioDefaults:audioPresets[button.dataset.audioPreset]);
+ $('ce-audio-ab').onclick=()=>$('audio').click();
+ $('ce-audio-export').onclick=()=>{$('ce-audio-config').value=JSON.stringify({schema:'ce-audio/1',settings:normalizeAudio(cfg)});status('设置已写入下方文本框，可以复制保存。');};
+ $('ce-audio-import').onclick=()=>{try{const data=JSON.parse($('ce-audio-config').value);if(data.schema!=='ce-audio/1'||!data.settings||typeof data.settings!=='object'||Object.values(data.settings).some(v=>typeof v!=='number'||!Number.isFinite(v))||Object.keys(audioDefaults).some(k=>!(k in data.settings)))throw Error('请粘贴完整的声音设置');applyAudio(data.settings);}catch(e){status('无法载入设置：'+e.message);}};
+}
 function openTab(id){for(const name of ['ce-listen','ce-library','ce-settings'])$(name).hidden=name!==id;for(const button of shadow.querySelectorAll('#ce-nav button'))button.setAttribute('aria-selected',String(button.dataset.tab===id));}
 for(const button of shadow.querySelectorAll('#ce-nav button'))button.onclick=()=>openTab(button.dataset.tab);
 $('open').onclick=()=>{const p=$('panel');p.hidden=!p.hidden;if(TABLET&&!rootVideo)openTab('ce-library');$('open').setAttribute('aria-expanded',String(!p.hidden));};
@@ -150,8 +165,8 @@ async function startAudio(){
    status(worklet?'人声滤波与增益已开启。请在无讲话片段采样底噪，启用频谱降噪。':'人声滤波与增益已开启；浏览器限制了频谱处理，降噪采样不可用。');
  }catch(e){if(ticket!==epoch){a?.pause();if(objectURL)URL.revokeObjectURL(objectURL);ctx?.close().catch(()=>{});return;}if(audioState)stopAudio();else{a?.pause();if(a){a.removeAttribute('src');a.load()}if(objectURL)URL.revokeObjectURL(objectURL);ctx?.close().catch(()=>{});}pending=false;audioPreparation=null;$('audio').disabled=false;$('audio').textContent=TABLET?'开启降噪（试验）':'启用音频增强';status((e.message||'音频处理不可用')+'。原视频与原声保留。');}
 }
-$('audio').onclick=async()=>{if(!TABLET){audioState||pending?stopAudio('已恢复原声。'):startAudio();return;}const live=window.__CE_LIVE_AUDIO__;if(!live){status('请先打开具体课次，等待多视角播放器接入。');return;}live.update({gain:cfg.gain,strength:cfg.strength});$('audio').disabled=true;try{await live.setEnhanced(!live.state().enhanced);}catch(e){status(e.message+'。当前原声保留。');}finally{$('audio').disabled=false;updateLiveAudio();}};
-function updateLiveAudio(){if(!TABLET)return;const state=window.__CE_LIVE_AUDIO__?.state();$('audio').textContent=state?.enhanced?'关闭降噪（试验）':'开启降噪（试验）';$('noise').disabled=!state?.enhanced||!state?.worklet||state?.neural;$('noise').textContent=state?.neural?'自动降噪 · 无需采样':'采样底噪 1.5 秒';}
+$('audio').onclick=async()=>{if(!TABLET){audioState||pending?stopAudio('已恢复原声。'):startAudio();return;}const live=window.__CE_LIVE_AUDIO__;if(!live){status('请先打开具体课次，等待多视角播放器接入。');return;}live.update(cfg);$('audio').disabled=true;try{await live.setEnhanced(!live.state().enhanced);}catch(e){status(e.message+'。当前原声保留。');}finally{$('audio').disabled=false;updateLiveAudio();}};
+function updateLiveAudio(){if(!TABLET)return;const state=window.__CE_LIVE_AUDIO__?.state();$('audio').textContent=state?.enhanced?'关闭声音调整':'开启声音调整';if($('ce-audio-ab'))$('ce-audio-ab').textContent=state?.enhanced?'对比原声':'返回声音调整';$('noise').disabled=!state?.enhanced||!state?.worklet||state?.neural;$('noise').textContent=state?.neural?'自动降噪 · 无需采样':'采样底噪 1.5 秒';}
 window.addEventListener('ce-audio-state',updateLiveAudio);window.addEventListener('ce-live-audio-status',e=>status(e.detail));
 if(TABLET)$('ce-cloud-captions').onclick=()=>openTab('ce-library');
 if(TABLET)$('ce-local-caption').onclick=()=>{const local=window.__CE_LOCAL_CAPTION__;if(!local){$('ce-local-status').textContent='字幕服务尚未就绪，请等课次加载完成。';return;}local.toggle();};

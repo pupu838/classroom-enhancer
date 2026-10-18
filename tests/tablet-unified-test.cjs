@@ -19,9 +19,14 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   assert.equal(root.querySelectorAll('#ce-nav button').length,3);root.querySelector('[data-tab="ce-library"]').click();assert.equal($('ce-library').hidden,false);assert.equal($('ce-listen').hidden,true);
   let preparations=0,enabled=false,updates=0;w.__CE_AUDIO_PREPARE__=async(id)=>{assert.equal(id,'lesson-1');preparations++;return new w.Blob(['fixture']);};
   w.__CE_LIVE_AUDIO__={state:()=>({started:true,enhanced:enabled,worklet:true,neural:true,activeId:'slides'}),update(){updates++;},async setEnhanced(value){enabled=value;w.dispatchEvent(new w.Event('ce-audio-state'));},calibrate(){throw Error('neural audio must not require calibration');}};
-  root.querySelector('[data-tab="ce-listen"]').click();await $('audio').onclick();assert.equal(preparations,0,'live denoise must never download audio');assert.equal(enabled,true);assert.equal($('audio').textContent,'关闭降噪（试验）');assert.equal($('noise').disabled,true);assert(updates>0);
+  root.querySelector('[data-tab="ce-listen"]').click();await $('audio').onclick();assert.equal(preparations,0,'live denoise must never download audio');assert.equal(enabled,true);assert.equal($('audio').textContent,'关闭声音调整');assert.equal($('noise').disabled,true);assert(updates>0);
+  root.querySelector('[data-audio-preset=gentle]').click();assert.equal($('strength').value,'0.25');assert.equal($('body').value,'-2');assert.equal(preparations,0);
+  $('presence').value='5';$('presence').dispatchEvent(new w.Event('input'));$('ce-audio-export').click();const exported=JSON.parse($('ce-audio-config').value);assert.equal(exported.settings.presence,5);assert.equal(exported.schema,'ce-audio/1');
+  root.querySelector('[data-audio-preset=flat]').click();assert.equal($('presence').value,'0');$('ce-audio-config').value=JSON.stringify(exported);$('ce-audio-import').click();assert.equal($('presence').value,'5');assert.equal($('strength').value,'0.25');
+  $('ce-audio-config').value='{}';$('ce-audio-import').click();assert.match($('status').textContent,/无法载入/);assert.equal($('presence').value,'5');
+
   const saved=[];w.HTMLAnchorElement.prototype.click=function(){saved.push(this.download);};await $('ce-audio-download').onclick();assert.equal(preparations,1);assert.equal(enabled,true,'downloading must not disable enhancement');assert.equal(saved[0],'课堂音频_lesson-1.m4a');assert.equal($('ce-audio-download-link').hidden,false);
-  await $('audio').onclick();assert.equal(enabled,false);assert.equal(preparations,1);assert.equal($('audio').textContent,'开启降噪（试验）');
+  await $('audio').onclick();assert.equal(enabled,false);assert.equal(preparations,1);assert.equal($('audio').textContent,'开启声音调整');
   const retry=w.__CE_RETRY_PLAYER__;delete w.__CE_RETRY_PLAYER__;await $('ce-player-reset').onclick();assert.match(w.document.documentElement.dataset.cePlayerMessage,/尚未就绪/);assert.equal($('ce-player-reset').disabled,false);w.__CE_RETRY_PLAYER__=retry;
   console.log('PASS unified iPad panel, independent live denoise/download, neural automatic suppression, source UI recovery');
  }finally{dom.window.close();}

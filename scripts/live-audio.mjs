@@ -1,15 +1,16 @@
 // Native media streaming, independent of the download/remux pipeline.
 // A fixed video remains the clock. Changing audio never changes that video.
+import {audioDefaults,normalizeAudio} from './audio-tuning.mjs';
 export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>{}}){
  let ctx,bus,dry,wet,output,worklet,boost,tap,meter,active=null,wanted=clockId,enhanced=false,disposed=false,serial=0,preparing=null;
- let volume=clock.volume,muted=clock.muted,started=false,gainDb=3,strength=.7,lastSeek=0,buffering=false,stalledAt=0,previousTime=-1;
+ let volume=clock.volume,muted=clock.muted,started=false,lastSeek=0,buffering=false,stalledAt=0,previousTime=-1,tuning={...audioDefaults},filters=null;
  const tracks=new Map(),clean=[],initialMute=clock.muted,base=views.find(v=>v.id===clockId)?.offset||0;
  const emit=()=>window.dispatchEvent(new Event('ce-audio-state'));
  const listen=(target,event,fn)=>{target.addEventListener(event,fn);clean.push(()=>target.removeEventListener(event,fn));};
  const targetTime=track=>Math.max(0,clock.currentTime+base-(track.view.offset||0));
  const ramp=(param,value,time=.03)=>param.setTargetAtTime(value,ctx.currentTime,time);
- function state(){return {activeId:active?.view.id||clockId,wantedId:wanted,started,enhanced,worklet:!!worklet,neural:!!worklet?.neural,volume,muted,ctx,analyser:tap,outputAnalyser:meter,media:active?{time:active.a.currentTime,paused:active.a.paused,rate:active.a.playbackRate,ready:active.a.readyState}:null};}
- function updateGain(){if(!ctx)return;ramp(output.gain,muted?0:volume);ramp(dry.gain,enhanced?0:1);ramp(wet.gain,enhanced?1:0);if(boost)ramp(boost.gain,10**(gainDb/20));}
+ function state(){return {activeId:active?.view.id||clockId,wantedId:wanted,started,enhanced,tuning:{...tuning},worklet:!!worklet,neural:!!worklet?.neural,volume,muted,ctx,analyser:tap,outputAnalyser:meter,media:active?{time:active.a.currentTime,paused:active.a.paused,rate:active.a.playbackRate,ready:active.a.readyState}:null};}
+ function updateGain(){if(!ctx)return;ramp(output.gain,muted?0:volume);ramp(dry.gain,enhanced?0:1);ramp(wet.gain,enhanced?1:0);if(boost)ramp(boost.gain,10**(tuning.gain/20));if(filters){ramp(filters.hp.frequency,tuning.highpass);ramp(filters.lp.frequency,tuning.lowpass);for(const k of ['bass','body','presence','treble'])ramp(filters[k].gain,tuning[k]);ramp(filters.limiter.threshold,tuning.ceiling);}}
  function init(){
   if(ctx)return;
   ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});bus=ctx.createGain();dry=ctx.createGain();wet=ctx.createGain();output=ctx.createGain();tap=ctx.createAnalyser();tap.fftSize=2048;
@@ -37,7 +38,7 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
    if(!clock.paused)await a.play();else a.pause();if(ticket!==serial||disposed)return;
    // The previous track stays audible while the target buffers. Crossfade only
    // after the target is aligned and playable; keep the canonical clock intact.
-   const old=active;active=track;previousTime=-1;stalledAt=0;started=true;clock.muted=true;updateGain();ramp(track.level.gain,1,.015);
+   const old=active;if(old!==track)worklet?.port.postMessage({type:'reset'});active=track;previousTime=-1;stalledAt=0;started=true;clock.muted=true;updateGain();ramp(track.level.gain,1,.015);
    if(old&&old!==track){ramp(old.level.gain,0,.015);setTimeout(()=>{if(active!==old)old.a.pause();},150);}
    onStatus('正在使用'+track.view.label+'音频'+(enhanced?' · 浏览器人声增强':' · 原声')+'。切换音频保留播放进度。');emit();window.dispatchEvent(new Event('ce-audio-track'));
   }catch(e){if(ticket!==serial||disposed)return;if(track!==active)track.a.pause();wanted=active?.view.id||clockId;emit();throw e;}
@@ -46,19 +47,20 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   preparing=(async()=>{if(!ctx.audioWorklet)throw Error('此浏览器未提供实时音频处理');let url;
    const neuralSource=window.__CE_RNNOISE_SOURCE__,neural=!!neuralSource&&ctx.sampleRate===48000;
    try{url=URL.createObjectURL(new Blob([neural?neuralSource:workletSource],{type:'text/javascript'}));await ctx.audioWorklet.addModule(url);}finally{if(url)URL.revokeObjectURL(url);}
-   if(disposed)return;const hp=ctx.createBiquadFilter(),lp=ctx.createBiquadFilter(),presence=ctx.createBiquadFilter(),limiter=ctx.createDynamicsCompressor();
-   hp.type='highpass';hp.frequency.value=100;lp.type='lowpass';lp.frequency.value=6500;presence.type='peaking';presence.frequency.value=2200;presence.Q.value=.8;presence.gain.value=2;
-   limiter.threshold.value=-8;limiter.knee.value=12;limiter.ratio.value=8;limiter.attack.value=.003;limiter.release.value=.15;
-   worklet=new AudioWorkletNode(ctx,neural?'classroom-rnnoise':'classroom-denoise');worklet.neural=neural;worklet.port.postMessage({type:'strength',value:strength});worklet.port.onmessage=({data})=>{if(data.type==='calibrated')onStatus('底噪采样完成。可降低降噪强度减少失真。');};worklet.onprocessorerror=()=>{enhanced=false;updateGain();onStatus('降噪处理暂停，已切回本路原声。');emit();};
-   boost=ctx.createGain();boost.gain.value=10**(gainDb/20);bus.connect(hp);hp.connect(lp);lp.connect(worklet);worklet.connect(presence);presence.connect(boost);boost.connect(limiter);limiter.connect(wet);wet.connect(output);
+   if(disposed)return;const hp=ctx.createBiquadFilter(),lp=ctx.createBiquadFilter(),bass=ctx.createBiquadFilter(),body=ctx.createBiquadFilter(),presence=ctx.createBiquadFilter(),treble=ctx.createBiquadFilter(),limiter=ctx.createDynamicsCompressor();
+   hp.type='highpass';lp.type='lowpass';bass.type='lowshelf';bass.frequency.value=180;body.type='peaking';body.frequency.value=450;body.Q.value=.8;presence.type='peaking';presence.frequency.value=2200;presence.Q.value=.8;treble.type='highshelf';treble.frequency.value=4500;
+   limiter.knee.value=12;limiter.ratio.value=8;limiter.attack.value=.003;limiter.release.value=.15;
+   filters={hp,lp,bass,body,presence,treble,limiter};
+   worklet=new AudioWorkletNode(ctx,neural?'classroom-rnnoise':'classroom-denoise');worklet.neural=neural;worklet.port.postMessage({type:'strength',value:tuning.strength});worklet.port.onmessage=({data})=>{if(data.type==='calibrated')onStatus('底噪采样完成。可降低降噪强度减少失真。');};worklet.onprocessorerror=()=>{enhanced=false;updateGain();onStatus('降噪处理暂停，已切回本路原声。');emit();};
+   boost=ctx.createGain();bus.connect(worklet);worklet.connect(hp);hp.connect(lp);lp.connect(bass);bass.connect(body);body.connect(presence);presence.connect(treble);treble.connect(boost);boost.connect(limiter);limiter.connect(wet);wet.connect(output);updateGain();
   })().finally(()=>preparing=null);return preparing;
  }
  async function setEnhanced(value){if(!value){enhanced=false;worklet?.port.postMessage({type:'bypass',value:true});updateGain();onStatus('已关闭降噪，继续播放所选音轨原声。');emit();return;}if(!started)await select(wanted);if(!worklet)onStatus('正在加载小型降噪模块，当前音轨原声继续播放…');await effects();if(disposed)return;enhanced=true;worklet?.port.postMessage({type:'bypass',value:false});updateGain();onStatus(worklet?.neural?'已开启 RNNoise 降噪试验；不保证提高课堂人声清晰度，可随时关闭对比原声。':'浏览器人声增强已开启，可在无人讲话时采样底噪。');emit();}
  function sync(force=false){if(!started||!active||disposed)return;align(active,force);if(clock.paused||clock.seeking||buffering){active.a.pause();stalledAt=0;return;}if(active.a.paused)active.a.play().catch(()=>fallback('浏览器暂停了音频，请重新选择这路音频继续。'));const now=performance.now();if(!active.a.seeking&&active.a.currentTime===previousTime){if(!stalledAt)stalledAt=now;else if(now-stalledAt>3500)fallback('所选音轨缓冲停顿，已恢复学校主音轨原声；可稍后切换重试。');}else stalledAt=0;previousTime=active.a.currentTime;}
  for(const event of ['play','playing','seeked','ratechange'])listen(clock,event,()=>{if(event==='playing'||event==='seeked')buffering=false;sync(event==='seeked');});
  for(const event of ['pause','waiting','ended'])listen(clock,event,()=>{if(event==='waiting')buffering=true;if(active)active.a.pause();});
- listen(clock,'seeking',()=>{if(active){active.a.pause();align(active,true);}window.dispatchEvent(new Event('ce-audio-seek'));});
+ listen(clock,'seeking',()=>{worklet?.port.postMessage({type:'reset'});if(active){active.a.pause();align(active,true);}window.dispatchEvent(new Event('ce-audio-seek'));});
  listen(clock,'volumechange',()=>{if(started&&!clock.muted)clock.muted=true;});
  const timer=setInterval(()=>sync(),500);
- return {state,select,setEnhanced,update(values){gainDb=values.gain??gainDb;strength=values.strength??strength;worklet?.port.postMessage({type:'strength',value:strength});updateGain();},calibrate(){if(worklet)worklet.port.postMessage({type:'calibrate'});},getMuted:()=>muted,getVolume:()=>volume,setMuted(value){muted=!!value;if(started)updateGain();else clock.muted=muted;emit();},setVolume(value){volume=Math.max(0,Math.min(1,value));if(started)updateGain();else clock.volume=volume;emit();},destroy(){disposed=true;serial++;clearInterval(timer);clean.forEach(fn=>fn());for(const t of tracks.values()){t.a.pause();t.a.removeAttribute('src');t.a.load();}ctx?.close().catch(()=>{});clock.muted=started?muted:initialMute;},getCapture(){if(!started)throw Error('请先选择一路音频');return {ctx,bus,clock,baseOffset:base};}};
+ return {state,select,setEnhanced,update(values){tuning=normalizeAudio(values,tuning);worklet?.port.postMessage({type:'strength',value:tuning.strength});updateGain();},calibrate(){if(worklet)worklet.port.postMessage({type:'calibrate'});},getMuted:()=>muted,getVolume:()=>volume,setMuted(value){muted=!!value;if(started)updateGain();else clock.muted=muted;emit();},setVolume(value){volume=Math.max(0,Math.min(1,value));if(started)updateGain();else clock.volume=volume;emit();},destroy(){disposed=true;serial++;clearInterval(timer);clean.forEach(fn=>fn());for(const t of tracks.values()){t.a.pause();t.a.removeAttribute('src');t.a.load();}ctx?.close().catch(()=>{});clock.muted=started?muted:initialMute;},getCapture(){if(!started)throw Error('请先选择一路音频');return {ctx,bus,clock,baseOffset:base};}};
 }
