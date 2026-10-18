@@ -9,6 +9,10 @@ on:
         description: 'Build, dependency, listener and size checks only; no registry write or GPU'
         type: boolean
         default: true
+      export_oci:
+        description: 'Save public-source OCI archive for local transfer; contains no secrets or classroom audio'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -70,6 +74,15 @@ jobs:
           name: moss-tencent-image-readiness
           path: /tmp/moss-image-readiness.json
           retention-days: 14
+      - name: Export verified OCI archive for a different transfer route
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: moss-oci-transport
+          path: /tmp/moss-image.tar
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
       - name: Push pinned image without deploying or invoking a GPU
         if: ${{ success() && github.event_name == 'workflow_dispatch' && vars.CE_TCR_IMAGE != '' && !inputs.readiness_only }}
         timeout-minutes: 120
