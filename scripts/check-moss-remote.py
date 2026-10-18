@@ -1,17 +1,21 @@
 """Two bounded requests to an AUTHORIZED private GPU deployment. No auto retry."""
 import argparse
+from array import array
 import base64
 import hashlib
 import hmac
+import io
+import math
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import time
+import wave
 from urllib.parse import urlparse
 import httpx
 
-p=argparse.ArgumentParser();p.add_argument('aac',help='a previously prepared eight-second AAC MP4 window');p.add_argument('report');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('aac',help='a previously prepared eight-second AAC MP4 window');p.add_argument('report');p.add_argument('--audio-dir',help='optional private directory for the two returned WAV clips');args=p.parse_args()
 url=os.environ['CE_MOSS_URL'];token=os.environ['CE_MOSS_TOKEN'];parsed=urlparse(url)
 assert parsed.scheme=='https' and not parsed.username and not parsed.query and len(token)>=32
 headers={'Content-Type':'application/json','Authorization':'Bearer '+token}
@@ -49,6 +53,15 @@ with httpx.Client(timeout=55,follow_redirects=False) as client:
         assert result['protocol']=='ce-moss-segment/1' and result['samples']==96000 and result['pcmScale']==4
         assert result['inputSha256']==body['sha256'] and result['trimSeconds']==trim
         assert len(data)==192044 and hashlib.sha256(data).hexdigest()==result['sha256']
-        rows.append({'roundTripSeconds':elapsed,'inferenceMs':result['inferenceMs'],'finiteWavChecked':True})
+        with wave.open(io.BytesIO(data)) as wav:
+            assert wav.getnchannels()==1 and wav.getsampwidth()==2 and wav.getframerate()==16000 and wav.getnframes()==96000
+            pcm=array('h',wav.readframes(96000))
+        if os.sys.byteorder!='little':pcm.byteswap()
+        rms=math.sqrt(sum(float(x)**2 for x in pcm)/len(pcm))/32767*4
+        assert 1e-5<rms<1,'Remote output is silent or has abnormal signal energy'
+        if args.audio_dir:
+            destination=Path(args.audio_dir);destination.mkdir(parents=True,exist_ok=True)
+            (destination/f'moss-round-{len(rows)+1}.wav').write_bytes(data)
+        rows.append({'roundTripSeconds':elapsed,'inferenceMs':result['inferenceMs'],'finiteWavChecked':True,'rms':rms})
 report={'requests':2,'automaticRetries':0,'results':rows,'warmSupports1xPlanningGate':rows[1]['roundTripSeconds']<3.75,'warmSupports2xPlanningGate':rows[1]['roundTripSeconds']<1.875,'note':'Planning gates only; sustained real replay and physical iPad acceptance still required'}
 Path(args.report).write_text(json.dumps(report,indent=2),encoding='utf-8');print(json.dumps(report),flush=True)

@@ -39,7 +39,9 @@
 
 SCF 函数 URL 必须启用 CAM 鉴权，应用后台独立口令使用 X-CE-Moss-Token，避免与 TC3 Authorization 冲突。EdgeOne 增加 CE_MOSS_SCF_SECRET_ID / CE_MOSS_SCF_SECRET_KEY / CE_MOSS_SCF_UIN（临时密钥另带 CE_MOSS_SCF_SESSION_TOKEN），仅授予目标函数的 scf:InvokeFunctionUrl。不要用 ASR-only 凭据，也不要把主账号管理密钥放进后台。缺少专用 CAM 配置时，健康检查仍返回未开通。
 
-已创建上述单函数调用策略 ce-moss-invoke-only；专用编程用户 classroom-moss-invoker 的创建因腾讯云图片验证码暂停，需用户手动完成验证；尚未拿到调用密钥。首轮只发两次短请求、预算不超过 5 元的请求已发给用户，未收到确认前不创建或调用 GPU。
+已创建上述单函数调用策略 ce-moss-invoke-only；用户已完成验证码，专用编程用户 classroom-moss-invoker 创建完成、仅绑定该策略，无控制台登录权限。密钥已保存私有环境；没有复用 ASR 凭据。用户在明确说明首轮只发两次短请求、预算不超过 5 元、不常驻、不自动升级规格后要求继续，按该范围推进。尚未创建或调用 GPU。
+
+整流上传超时后改用标准 Registry V2 的8MiB分块传输，逐层SHA检查并跳过已存在层，任务和恢复次数有界。真实免费个人仓库的2MiB及32MiB合成数据上传通过；完整模型镜像仍需完成上传和平台额度检查。流水线不再同时向同一个个人仓库进行两次大镜像上传。
 
 授权和配额齐备后：将同一镜像推入已确认的私有 TCR → 创建无公网触发器的函数并限制并发 → 配置随机独立处理口令 → 配置 HTTPS 入口 → 用 check-moss-remote.py 发两次请求 → 验证 GPU、音质、冷/热吞吐与账单 → 真实回放持续验证 → 发布 0.10.0 并开启 CE_MOSS_ENABLED。开关关闭前不改线上入口。
 
