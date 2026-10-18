@@ -14,6 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           file: cloud/Moss.Dockerfile
@@ -38,7 +39,7 @@ jobs:
                   assert exc.code == 401, exc.code
                   print('SCF port 9000: unauthorized request rejected before GPU initialization')
                   break
-              except urllib.error.URLError:
+              except (urllib.error.URLError, OSError):
                   time.sleep(.4)
           else:
               raise AssertionError('SCF listener not ready within 24 seconds')
@@ -47,16 +48,20 @@ jobs:
           test "$status" = 400
           docker stop moss-check
       - name: Measure compressed OCI layers against documented SCF default limit
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           docker buildx build --platform linux/amd64 -f cloud/Moss.Dockerfile --provenance=false --output type=oci,dest=/tmp/moss-image.tar .
           python scripts/check-moss-image.py /tmp/moss-image.tar /tmp/moss-image-readiness.json
           cat /tmp/moss-image-readiness.json
           cat /tmp/moss-image-readiness.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         with:
           name: moss-tencent-image-readiness
           path: /tmp/moss-image-readiness.json
           retention-days: 14
       - name: Cleanup
         if: always()
-        run: docker rm -f moss-check || true
+        run: |
+          docker logs moss-check || true
+          docker rm -f moss-check || true
