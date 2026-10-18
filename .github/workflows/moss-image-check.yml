@@ -1,0 +1,62 @@
+name: Moss Tencent image readiness
+on:
+  push:
+    branches: [cloud-pipeline-v0.5]
+    paths: ['cloud/Moss.Dockerfile*', 'cloud/moss_*.py', 'cloud/moss-requirements.txt', '.github/workflows/moss-image-check.yml', 'scripts/check-moss-image.py']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cloud/Moss.Dockerfile
+          platforms: linux/amd64
+          tags: classroom-moss:check
+          load: true
+          push: false
+      - name: Verify SCF listener and auth without starting a model
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(openssl rand -hex 32)
+          echo "::add-mask::$token"
+          docker run -d --name moss-check -p 127.0.0.1:9000:9000 -e CE_MOSS_TOKEN="$token" classroom-moss:check
+          python - <<'PY'
+          import json, time, urllib.request, urllib.error
+          for attempt in range(60):
+              try:
+                  urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:9000/enhance', data=b'{}', headers={'Content-Type':'application/json'}), timeout=1)
+                  raise AssertionError('Unauthenticated request unexpectedly accepted')
+              except urllib.error.HTTPError as exc:
+                  assert exc.code == 401, exc.code
+                  print('SCF port 9000: unauthorized request rejected before GPU initialization')
+                  break
+              except urllib.error.URLError:
+                  time.sleep(.4)
+          else:
+              raise AssertionError('SCF listener not ready within 24 seconds')
+          PY
+          status=$(curl -sS -o /tmp/moss-invalid.json -w '%{http_code}' -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' --data '{}' http://127.0.0.1:9000/enhance)
+          test "$status" = 400
+          docker stop moss-check
+      - name: Measure compressed OCI layers against documented SCF default limit
+        run: |
+          docker buildx build --platform linux/amd64 -f cloud/Moss.Dockerfile --provenance=false --output type=oci,dest=/tmp/moss-image.tar .
+          python scripts/check-moss-image.py /tmp/moss-image.tar /tmp/moss-image-readiness.json
+          cat /tmp/moss-image-readiness.json
+          cat /tmp/moss-image-readiness.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moss-tencent-image-readiness
+          path: /tmp/moss-image-readiness.json
+          retention-days: 14
+      - name: Cleanup
+        if: always()
+        run: docker rm -f moss-check || true

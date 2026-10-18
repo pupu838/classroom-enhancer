@@ -11,5 +11,7 @@ COPY cloud/moss_engine.py cloud/moss_service.py /app/cloud/
 COPY portal/tablet/vendor/moss-fp32-ort130-708b725800ee/moss-se16k.onnx /opt/models/moss-se16k.onnx
 COPY portal/tablet/vendor/moss-fp32-ort130-708b725800ee/MODEL-*.txt /opt/models/
 RUN python3 -c "from pathlib import Path;import hashlib;assert hashlib.sha256(Path('/opt/models/moss-se16k.onnx').read_bytes()).hexdigest()=='708b725800ee43542f64c2a00a7a00289411385aecec75e8fc2295ea596be422'"
-EXPOSE 8000
-CMD ["uvicorn","cloud.moss_service:create_app","--factory","--host","0.0.0.0","--port","8000","--workers","1","--limit-concurrency","2"]
+# Tencent SCF WebServer images require 0.0.0.0:9000 (not an arbitrary port).
+# The model stays lazy: the HTTP listener starts without GPU initialization.
+EXPOSE 9000
+CMD ["uvicorn","cloud.moss_service:create_app","--factory","--host","0.0.0.0","--port","9000","--workers","1","--limit-concurrency","2"]

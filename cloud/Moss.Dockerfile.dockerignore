@@ -1,0 +1,16 @@
+# Only public source and the pinned model enter the remote build context.
+# In particular, never send .env, browser profiles or classroom recordings.
+**
+!cloud/
+!cloud/Moss.Dockerfile
+!cloud/Moss.Dockerfile.dockerignore
+!cloud/moss-requirements.txt
+!cloud/moss_engine.py
+!cloud/moss_service.py
+!portal/
+!portal/tablet/
+!portal/tablet/vendor/
+!portal/tablet/vendor/moss-fp32-ort130-708b725800ee/
+!portal/tablet/vendor/moss-fp32-ort130-708b725800ee/moss-se16k.onnx
+!portal/tablet/vendor/moss-fp32-ort130-708b725800ee/MODEL-LICENSE.txt
+!portal/tablet/vendor/moss-fp32-ort130-708b725800ee/MODEL-NOTICE.txt
