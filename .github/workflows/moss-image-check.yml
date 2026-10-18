@@ -71,7 +71,7 @@ jobs:
           path: /tmp/moss-image-readiness.json
           retention-days: 14
       - name: Push pinned image without deploying or invoking a GPU
-        if: ${{ success() && vars.CE_TCR_IMAGE != '' && !inputs.readiness_only }}
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && vars.CE_TCR_IMAGE != '' && !inputs.readiness_only }}
         timeout-minutes: 120
         env:
           CE_TCR_IMAGE: ${{ vars.CE_TCR_IMAGE }}
@@ -86,7 +86,7 @@ jobs:
           python scripts/push-moss-oci.py /tmp/moss-image.tar "$CE_TCR_IMAGE:$GITHUB_SHA" /tmp/moss-registry-transfer.json
           echo "Private Tencent image uploaded for commit $GITHUB_SHA; no SCF function created or GPU invoked." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
-        if: ${{ success() && vars.CE_TCR_IMAGE != '' && !inputs.readiness_only }}
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && vars.CE_TCR_IMAGE != '' && !inputs.readiness_only }}
         with:
           name: moss-private-registry-transfer
           path: /tmp/moss-registry-transfer.json

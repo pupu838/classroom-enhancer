@@ -6,7 +6,7 @@
 
 实际构建检查已经通过：https://github.com/pupu838/classroom-enhancer/actions/runs/39107377483 。Linux amd64 镜像监听 9000，未认证请求 401、认证后的无效输入 400，均未启动 GPU。OCI 压缩层合计 **3,368,645,049 字节（3.37 GB）**，超过文档默认镜像限额；需额度确认或缩减镜像后才能部署。此检查没有 GPU、音质或 iPad 结论。
 
-后续精简版 e6ae655 验收成功：https://github.com/pupu838/classroom-enhancer/actions/runs/39115304921 。保留完整cuDNN、必需CUDA库和相同版本，移除未使用的CUDA组件；所有直接动态库依赖检查和认证监听检查通过。压缩层 **2,179,324,906 字节（2.18GB）**，仍超过默认1GB。已准备申请4GB镜像额度的工单草稿，等待用户授权发送及补填联系电话，不自动开通收费附加项。CloudShell另需用户完成微信MFA。尚未获得GPU实测结果。
+后续精简版 e6ae655 验收成功：https://github.com/pupu838/classroom-enhancer/actions/runs/39115304921 。保留完整cuDNN、必需CUDA库和相同版本，移除未使用的CUDA组件；所有直接动态库依赖检查和认证监听检查通过。压缩层 **2,179,324,906 字节（2.18GB）**，仍超过默认1GB。用户已于2026-10-18自行提交4GB镜像额度申请并填写联系电话，详情页为“已建单”，尚无客服答复，不需要重复提交。不自动开通收费附加项。CloudShell另需用户完成微信MFA。尚未获得GPU实测结果。
 
 ## 预定方式
 
@@ -37,7 +37,7 @@
 
 ## 构建与接入
 
-`cloud/Moss.Dockerfile` 与专用 dockerignore 只包含公开源码、固定 ONNX 和许可证。GitHub 的 Moss Tencent image readiness 工作流构建与检查镜像；仅在已配置私有仓库地址和加密凭据时，推送使用提交 SHA 固定的镜像版本。不会创建 SCF 或调用付费 GPU。工件只含体积/监听验证结果，未提供服务。仓库密码仅保存在受 Git 忽略的本机配置和 GitHub Secret；不进入镜像上下文。
+`cloud/Moss.Dockerfile` 与专用 dockerignore 只包含公开源码、固定 ONNX 和许可证。GitHub 的 Moss Tencent image readiness 工作流构建与检查镜像；普通源码推送不再传大镜像。仅在显式手动调度 readiness_only=false 且已配置私有仓库地址和加密凭据时，推送使用提交 SHA 固定的镜像版本。不会创建 SCF 或调用付费 GPU。工件只含体积/监听验证结果，未提供服务。仓库密码仅保存在受 Git 忽略的本机配置和 GitHub Secret；不进入镜像上下文。
 
 SCF 函数 URL 必须启用 CAM 鉴权，应用后台独立口令使用 X-CE-Moss-Token，避免与 TC3 Authorization 冲突。EdgeOne 增加 CE_MOSS_SCF_SECRET_ID / CE_MOSS_SCF_SECRET_KEY / CE_MOSS_SCF_UIN（临时密钥另带 CE_MOSS_SCF_SESSION_TOKEN），仅授予目标函数的 scf:InvokeFunctionUrl。不要用 ASR-only 凭据，也不要把主账号管理密钥放进后台。缺少专用 CAM 配置时，健康检查仍返回未开通。
 

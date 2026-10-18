@@ -1,6 +1,7 @@
 """Registry protocol failure recovery, using synthetic bytes and no network."""
 import hashlib
 import importlib.util
+from contextlib import redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -58,12 +59,12 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(report['gpuInvocations'],0)
 
     def test_lost_chunk_ack_resumes_without_duplicating_bytes(self):
-        expected = bytes(range(256)) * 180
-        received = bytearray(); lost_ack = False
+        expected = bytes(range(256)) * 400
+        received = bytearray(); lost_acks = 0
         location = '/v2/ns/image/blobs/uploads/example'
         digest = 'sha256:' + hashlib.sha256(expected).hexdigest()
         def handle(req):
-            nonlocal lost_ack
+            nonlocal lost_acks
             path = req.url.path
             if path == '/v2/':
                 return httpx.Response(401, headers={'WWW-Authenticate':'Bearer realm="https://ccr.ccs.tencentyun.com/token",service="test"'})
@@ -78,10 +79,8 @@ class RegistryTest(unittest.TestCase):
                 start, end = map(int, req.headers['content-range'].split('-'))
                 self.assertEqual(start, len(received)); self.assertEqual(end - start + 1, len(req.content))
                 received.extend(req.content)
-                if not lost_ack:
-                    lost_ack = True
-                    raise httpx.ReadTimeout('Synthetic lost acknowledgement')
-                return httpx.Response(202, headers={'Location':location, 'Range':f'0-{end}'})
+                lost_acks += 1
+                raise httpx.ReadTimeout('Synthetic lost acknowledgement')
             if req.method == 'PUT':
                 self.assertEqual(req.url.params['digest'], digest)
                 self.assertEqual(bytes(received), expected)
@@ -89,7 +88,29 @@ class RegistryTest(unittest.TestCase):
             raise AssertionError('Unexpected registry request')
         registry = upload.Registry('ccr.ccs.tencentyun.com/ns/image:test','test','password',client=httpx.Client(transport=httpx.MockTransport(handle)),chunk_size=8192)
         result = registry.upload(digest,len(expected),io.BytesIO(expected))
-        self.assertFalse(result['alreadyPresent']); self.assertEqual(registry.recoveries,1)
+        self.assertFalse(result['alreadyPresent']); self.assertGreater(lost_acks,8)
+        self.assertEqual(registry.recoveries,lost_acks)
+
+    def test_stalled_transfer_stops_without_logging_transport_secrets(self):
+        attempts = 0; data = b'bounded synthetic upload'
+        location = '/v2/ns/image/blobs/uploads/example'
+        def handle(req):
+            nonlocal attempts
+            if req.url.path == '/v2/': return httpx.Response(401,headers={'WWW-Authenticate':'Bearer realm="https://ccr.ccs.tencentyun.com/token",service="test"'})
+            if req.url.path == '/token': return httpx.Response(200,json={'token':'synthetic-token'})
+            if req.method == 'HEAD': return httpx.Response(404)
+            if req.method == 'POST': return httpx.Response(202,headers={'Location':location})
+            if req.method == 'PATCH':
+                attempts += 1
+                raise httpx.WriteTimeout('transport-url-with-synthetic-secret')
+            if req.method == 'GET': return httpx.Response(204,headers={'Range':'0-0','Location':location})
+            raise AssertionError('Stalled upload was finalized')
+        registry = upload.Registry('ccr.ccs.tencentyun.com/ns/image:test','test','password',client=httpx.Client(transport=httpx.MockTransport(handle)))
+        logs = io.StringIO()
+        with redirect_stdout(logs), self.assertRaisesRegex(upload.RegistryError,'no progress'):
+            registry.upload('sha256:'+hashlib.sha256(data).hexdigest(),len(data),io.BytesIO(data))
+        self.assertEqual(attempts,9)
+        self.assertNotIn('synthetic-secret',logs.getvalue())
 
     def test_invalid_blob_never_starts_upload_and_redirect_cannot_leak_auth(self):
         def forbidden(req): raise AssertionError('Network called before integrity validation')
