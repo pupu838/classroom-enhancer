@@ -46,6 +46,8 @@ jobs:
           PY
           status=$(curl -sS -o /tmp/moss-invalid.json -w '%{http_code}' -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' --data '{}' http://127.0.0.1:9000/enhance)
           test "$status" = 400
+          status=$(curl -sS -o /tmp/moss-cam-invalid.json -w '%{http_code}' -X POST -H 'Authorization: TC3-HMAC-SHA256 smoke-check' -H "X-CE-Moss-Token: $token" -H 'Content-Type: application/json' --data '{}' http://127.0.0.1:9000/enhance)
+          test "$status" = 400
           docker stop moss-check
       - name: Measure compressed OCI layers against documented SCF default limit
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}

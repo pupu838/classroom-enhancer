@@ -2,7 +2,7 @@
 
 用户已选择腾讯云，并完成指定主账号登录。当前核价和免费部署准备，不创建付费资源；正式页面仍是 0.9.2。
 
-当前实查：广州配置页面可选 GN7vw.LARGE16（1/4 T4、4 GiB 显存、4 CPU、16 GiB 内存），旧小规格计算卡禁用。仅选入未提交表单，不表示库存锁定或 GPU 可用。TCR 的默认共享实例明确显示“免费限额使用”，已完成平台服务角色授权与个人仓库凭据初始化。SCF 运行角色仍待部署前配置。
+当前实查：广州配置页面可选 GN7vw.LARGE16（1/4 T4、4 GiB 显存、4 CPU、16 GiB 内存），旧小规格计算卡禁用。仅选入未提交表单，不表示库存锁定或 GPU 可用。TCR 的默认共享实例明确显示“免费限额使用”，已完成平台服务角色授权、个人仓库凭据初始化和私有仓库创建。SCF 已添加官方仅拉取镜像策略 QcloudAccessForSCFRoleInPullImage；不需要广泛授权所有 COS/CLS/APIGW 操作。
 
 实际构建检查已经通过：https://github.com/pupu838/classroom-enhancer/actions/runs/39107377483 。Linux amd64 镜像监听 9000，未认证请求 401、认证后的无效输入 400，均未启动 GPU。OCI 压缩层合计 **3,368,645,049 字节（3.37 GB）**，超过文档默认镜像限额；需额度确认或缩减镜像后才能部署。此检查没有 GPU、音质或 iPad 结论。
 
@@ -35,7 +35,9 @@
 
 ## 构建与接入
 
-`cloud/Moss.Dockerfile` 与专用 dockerignore 只包含公开源码、固定 ONNX 和许可证。GitHub 的 Moss Tencent image readiness 工作流只构建与检查镜像，不登录 TCR，不创建 SCF，不调用付费 GPU。工件只含体积/监听验证结果，未提供服务。
+`cloud/Moss.Dockerfile` 与专用 dockerignore 只包含公开源码、固定 ONNX 和许可证。GitHub 的 Moss Tencent image readiness 工作流构建与检查镜像；仅在已配置私有仓库地址和加密凭据时，推送使用提交 SHA 固定的镜像版本。不会创建 SCF 或调用付费 GPU。工件只含体积/监听验证结果，未提供服务。仓库密码仅保存在受 Git 忽略的本机配置和 GitHub Secret；不进入镜像上下文。
+
+SCF 函数 URL 必须启用 CAM 鉴权，应用后台独立口令使用 X-CE-Moss-Token，避免与 TC3 Authorization 冲突。EdgeOne 增加 CE_MOSS_SCF_SECRET_ID / CE_MOSS_SCF_SECRET_KEY / CE_MOSS_SCF_UIN（临时密钥另带 CE_MOSS_SCF_SESSION_TOKEN），仅授予目标函数的 scf:InvokeFunctionUrl。不要用 ASR-only 凭据，也不要把主账号管理密钥放进后台。缺少专用 CAM 配置时，健康检查仍返回未开通。
 
 授权和配额齐备后：将同一镜像推入已确认的私有 TCR → 创建无公网触发器的函数并限制并发 → 配置随机独立处理口令 → 配置 HTTPS 入口 → 用 check-moss-remote.py 发两次请求 → 验证 GPU、音质、冷/热吞吐与账单 → 真实回放持续验证 → 发布 0.10.0 并开启 CE_MOSS_ENABLED。开关关闭前不改线上入口。
 
@@ -47,3 +49,4 @@
 - 定价：https://cloud.tencent.com/document/product/583/12281
 - WebServer/镜像限制：https://cloud.tencent.com/document/product/583/56051
 - TCR 计费：https://cloud.tencent.cn/document/product/1141/40540
+- 函数 URL 鉴权：https://cloud.tencent.com/document/product/583/96100

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createMossGateway,MOSS_MODEL} from '../cloud/moss_gateway.mjs';
+import {tencentMossHeaders} from '../cloud/moss_tencent.mjs';
 const sha=b=>createHash('sha256').update(b).digest('hex');
 let calls=0;const input=Buffer.alloc(100,7),output=Buffer.alloc(44+32000);
 const body={mode:'moss-segment',model:MOSS_MODEL,data:input.toString('base64'),sha256:sha(input),trimSeconds:.5,duration:1};
@@ -13,4 +14,15 @@ for(const change of [{samples:15999},{inputSha256:'0'.repeat(64)},{pcmScale:1},{
 const redirect=createMossGateway({url:'https://private.example/enhance',token:'x'.repeat(40),enabled:true,fetcher:async()=>new Response(null,{status:302})});await assert.rejects(()=>redirect(body),/暂不可用/);
 const missingProxy=createMossGateway({url:'https://private.example.modal.run/enhance',token:'x'.repeat(40),enabled:true});assert.equal((await missingProxy({mode:'moss-health'})).ready,false);
 const protectedRelay=createMossGateway({url:'https://private.example.modal.run/enhance',token:'x'.repeat(40),proxyKey:'wk-'+'a'.repeat(20),proxySecret:'ws-'+'b'.repeat(20),enabled:true,fetcher:async(url,options)=>{assert.equal(options.headers['Modal-Key'],'wk-'+'a'.repeat(20));assert.equal(options.headers['Modal-Secret'],'ws-'+'b'.repeat(20));return Response.json(good);}});assert.deepEqual(await protectedRelay(body),good);
-console.log('PASS unconfigured gate, no GPU readiness call, authenticated bounded forwarding, input/output hashes, duration and scale validation');
+const camCredentials={secretId:'test-only-secret-id-12345',secretKey:'test-only-secret-key-12345',uin:'100000000001'};
+const camUrl='https://test.ap-guangzhou.tencentscf.com/enhance';
+const vector=tencentMossHeaders(new URL(camUrl),'{"model":"moss-se16k-fp32-v1","duration":6}',camCredentials,1792281600);
+assert.equal(vector.Authorization,'TC3-HMAC-SHA256 Credential=test-only-secret-id-12345/2026-10-18/scf/tc3_request, SignedHeaders=content-type;host, Signature=7a7bffbb0c8c629e70b04687b0149955c9d280b1defe11506c915066524e540f','independent Python hashlib/HMAC vector, UTC date and /enhance path');
+assert.equal(vector['X-Scf-Cam-Uin'],camCredentials.uin);
+assert.notEqual(vector.Authorization,tencentMossHeaders(new URL(camUrl),'{}',camCredentials,1792281600).Authorization,'signature binds exact request body');
+assert.notEqual(vector.Authorization,tencentMossHeaders(new URL(camUrl+'/other'),'{"model":"moss-se16k-fp32-v1","duration":6}',camCredentials,1792281600).Authorization,'signature binds request path');
+const camMissing=createMossGateway({url:camUrl,token:'x'.repeat(40),enabled:true,fetcher:()=>{throw Error('must not contact GPU');}});
+assert.equal((await camMissing({mode:'moss-health'})).ready,false);
+const camRelay=createMossGateway({url:camUrl,token:'x'.repeat(40),tencent:camCredentials,enabled:true,fetcher:async(url,options)=>{assert(options.headers.Authorization.startsWith('TC3-HMAC-SHA256 '));assert.equal(options.headers['X-CE-Moss-Token'],'x'.repeat(40));assert.equal(options.headers['X-Scf-Cam-Uin'],camCredentials.uin);assert(!options.body.includes('secret-key'));return Response.json(good);}});
+assert.equal((await camRelay({mode:'moss-health'})).ready,true);assert.deepEqual(await camRelay(body),good);
+console.log('PASS unconfigured gates, no GPU readiness call, bounded forwarding, hashes, duration, scale, Tencent CAM signing and independent app authentication');

@@ -1,10 +1,12 @@
 import {createHash} from 'node:crypto';
+import {isTencentMossUrl,tencentMossReady,tencentMossHeaders} from './moss_tencent.mjs';
 export const MOSS_MODEL='moss-se16k-fp32-v1';
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
-export function createMossGateway({url,token,proxyKey,proxySecret,enabled=false,fetcher=fetch}={}){
+export function createMossGateway({url,token,proxyKey,proxySecret,tencent,enabled=false,fetcher=fetch}={}){
  let endpoint;try{endpoint=new URL(url);if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password||endpoint.search||endpoint.hash)endpoint=null;}catch{}
  const proxyReady=!endpoint?.hostname.endsWith('.modal.run')||typeof proxyKey==='string'&&proxyKey.length>=16&&typeof proxySecret==='string'&&proxySecret.length>=16;
- const ready=enabled&&!!endpoint&&typeof token==='string'&&token.length>=32&&proxyReady;
+ const camReady=!isTencentMossUrl(endpoint)||tencentMossReady(tencent);
+ const ready=enabled&&!!endpoint&&typeof token==='string'&&token.length>=32&&proxyReady&&camReady;
  return async body=>{
   if(body.mode==='moss-health')return {protocol:'ce-moss-health/1',ready,model:MOSS_MODEL,clipSeconds:6,hopSeconds:5};
   if(!ready)fail('云端 Moss 降噪尚未开通，当前继续原声',503);
@@ -13,7 +15,9 @@ export function createMossGateway({url,token,proxyKey,proxySecret,enabled=false,
   const bytes=Buffer.from(data,'base64');if(bytes.length<32||bytes.length>1048576||createHash('sha256').update(bytes).digest('hex')!==sha256)fail('降噪分段校验失败');
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),50000);
   try{
-   const response=await fetcher(endpoint.href,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,...(endpoint.hostname.endsWith('.modal.run')?{'Modal-Key':proxyKey,'Modal-Secret':proxySecret}:{})},body:JSON.stringify({model,trimSeconds,duration,sha256,data}),signal:controller.signal});
+   const payload=JSON.stringify({model,trimSeconds,duration,sha256,data});
+   const headers=isTencentMossUrl(endpoint)?{...tencentMossHeaders(endpoint,payload,tencent),'X-CE-Moss-Token':token}:{'Content-Type':'application/json',Authorization:'Bearer '+token,...(endpoint.hostname.endsWith('.modal.run')?{'Modal-Key':proxyKey,'Modal-Secret':proxySecret}:{})};
+   const response=await fetcher(endpoint.href,{method:'POST',redirect:'error',headers,body:payload,signal:controller.signal});
    if(!response.ok){await response.body?.cancel();fail(response.status===429?'降噪服务忙，请稍后重新开启':'云端降噪暂不可用，当前继续原声',502);}
    const reader=response.body.getReader();let text='',size=0;const decoder=new TextDecoder();
    try{for(;;){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>400000)fail('云端降噪返回超过上限',502);text+=decoder.decode(part.value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel().catch(()=>{});}

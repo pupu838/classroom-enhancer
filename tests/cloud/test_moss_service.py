@@ -55,6 +55,15 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(again.json(), result)
         self.assertEqual(self.engine.calls, 1)
 
+    def test_tencent_cam_header_keeps_app_auth_separate(self):
+        headers = {'Authorization': 'TC3-HMAC-SHA256 platform-signature', 'X-CE-Moss-Token': 'test-only-' * 5}
+        first = self.client.post('/enhance', json=self.body, headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(self.engine.calls, 1)
+        bad = dict(headers, **{'X-CE-Moss-Token': 'wrong'})
+        self.assertEqual(self.client.post('/enhance', json=self.body, headers=bad).status_code, 401)
+        self.assertEqual(self.engine.calls, 1)
+
     def test_bounds_and_bad_audio(self):
         for patch in ({'duration': 60}, {'trimSeconds': -1}, {'data': '*' * 100}, {'model': 'other'}):
             self.assertEqual(self.client.post('/enhance', json=dict(self.body, **patch), headers=self.headers).status_code, 400)

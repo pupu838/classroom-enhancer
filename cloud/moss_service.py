@@ -61,7 +61,11 @@ def create_app(engine_factory=None, token=None):
     @app.post('/enhance')
     async def endpoint(request: Request):
         nonlocal engine
-        if not hmac.compare_digest(request.headers.get('authorization', '').encode(), ('Bearer ' + token).encode()):
+        # SCF reserves Authorization for the platform CAM signature. Keep our
+        # independent app secret in a separate header, never in the audio body.
+        app_token = request.headers.get('x-ce-moss-token')
+        valid = hmac.compare_digest(app_token.encode(), token.encode()) if app_token is not None else hmac.compare_digest(request.headers.get('authorization', '').encode(), ('Bearer ' + token).encode())
+        if not valid:
             raise HTTPException(401, '降噪服务认证失败')
         raw = bytearray()
         async for part in request.stream():

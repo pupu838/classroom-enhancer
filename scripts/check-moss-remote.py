@@ -2,6 +2,8 @@
 import argparse
 import base64
 import hashlib
+import hmac
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -12,16 +14,35 @@ import httpx
 p=argparse.ArgumentParser();p.add_argument('aac',help='a previously prepared eight-second AAC MP4 window');p.add_argument('report');args=p.parse_args()
 url=os.environ['CE_MOSS_URL'];token=os.environ['CE_MOSS_TOKEN'];parsed=urlparse(url)
 assert parsed.scheme=='https' and not parsed.username and not parsed.query and len(token)>=32
-headers={'Authorization':'Bearer '+token}
+headers={'Content-Type':'application/json','Authorization':'Bearer '+token}
 if parsed.hostname.endswith('.modal.run'):
     headers.update({'Modal-Key':os.environ['CE_MOSS_PROXY_KEY'],'Modal-Secret':os.environ['CE_MOSS_PROXY_SECRET']})
 audio=Path(args.aac).read_bytes();assert 32<=len(audio)<=1048576
 body={'model':'moss-se16k-fp32-v1','data':base64.b64encode(audio).decode(),'sha256':hashlib.sha256(audio).hexdigest(),'duration':6}
 rows=[]
+
+def request_headers(payload):
+    if not parsed.hostname.endswith(('.tencentscf.com', '.scf.tencentcs.com')):
+        return headers
+    # Function URL CAM authentication is checked before a billable worker runs.
+    # These credentials are separate from the existing ASR-only key.
+    secret_id=os.environ['CE_MOSS_SCF_SECRET_ID'];secret_key=os.environ['CE_MOSS_SCF_SECRET_KEY'];uin=os.environ['CE_MOSS_SCF_UIN']
+    stamp=int(time.time());date=datetime.fromtimestamp(stamp,timezone.utc).date().isoformat()
+    sha=lambda value:hashlib.sha256(value.encode()).hexdigest()
+    mac=lambda key,value:hmac.new(key,value.encode(),hashlib.sha256).digest()
+    canonical='POST\n'+parsed.path+'\n\ncontent-type:application/json\nhost:'+parsed.netloc+'\n\ncontent-type;host\n'+sha(payload)
+    scope=date+'/scf/tc3_request'
+    signing=mac(mac(mac(('TC3'+secret_key).encode(),date),'scf'),'tc3_request')
+    signature=hmac.new(signing,('TC3-HMAC-SHA256\n'+str(stamp)+'\n'+scope+'\n'+sha(canonical)).encode(),hashlib.sha256).hexdigest()
+    result={'Content-Type':'application/json','Authorization':f'TC3-HMAC-SHA256 Credential={secret_id}/{scope}, SignedHeaders=content-type;host, Signature={signature}','X-Scf-Cam-Timestamp':str(stamp),'X-Scf-Cam-Uin':uin,'X-CE-Moss-Token':token}
+    if os.environ.get('CE_MOSS_SCF_SESSION_TOKEN'):result['X-Scf-Cam-Token']=os.environ['CE_MOSS_SCF_SESSION_TOKEN']
+    return result
+
 with httpx.Client(timeout=55,follow_redirects=False) as client:
     for trim in (.5,1.0):
+        payload=json.dumps({**body,'trimSeconds':trim},separators=(',',':'))
         began=time.perf_counter()
-        response=client.post(url,headers=headers,json={**body,'trimSeconds':trim})
+        response=client.post(url,headers=request_headers(payload),content=payload.encode())
         if response.status_code!=200:
             raise SystemExit('Remote acceptance failed, HTTP '+str(response.status_code)+'; no retry issued')
         result=response.json();elapsed=time.perf_counter()-began;data=base64.b64decode(result['data'],validate=True)
