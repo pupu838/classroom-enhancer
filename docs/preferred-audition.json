@@ -1,0 +1,15 @@
+{
+  "schema": "ce-audition/1",
+  "settings": {
+    "model": "moss",
+    "mix": 1,
+    "gain": 0,
+    "highpass": 400,
+    "lowpass": 20000,
+    "bass": -12,
+    "body": -12,
+    "presence": -12,
+    "treble": -12,
+    "ceiling": -1
+  }
+}

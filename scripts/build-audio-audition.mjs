@@ -23,7 +23,10 @@ const presets=[
  ['09','MossFormerGAN · 混合','moss',.5,{}],['10','MossFormerGAN · 全量','moss',1,{}],
  ['11','WPE 去混响试验','wpe',1,{}]
 ].map(([id,label,model,mix,eq])=>({id,label,model,mix,eq}));
-for(const preset of presets){const raw=models.raw,processed=models[preset.model];let data=Float32Array.from(raw,(v,i)=>v*(1-preset.mix)+(processed[i]||0)*preset.mix);const file=join(tmp,'mix.f32');saveFloat(file,data);const filters=preset.id==='01'?'highpass=f=100,lowpass=f=7800,equalizer=f=450:t=q:w=0.8:g=-4,equalizer=f=2200:t=q:w=0.8:g=2,':'';const filtered=join(tmp,'filtered.f32');ff(['-f','f32le','-ar','48000','-ac','1','-i',file,'-af',filters+'anull','-f','f32le',filtered]);const bytes=readFileSync(filtered);data=match(new Float32Array(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.length)),preset.id);saveFloat(file,data);ff(['-f','f32le','-ar','48000','-ac','1','-i',file,'-c:a','aac','-b:a','128k',join(audioDir,preset.id+'_'+preset.label.replaceAll(' · ','_')+'.m4a')]);}
+const preference=JSON.parse(readFileSync('docs/preferred-audition.json','utf8').replace(/^\uFEFF/,''));
+const {model:preferredModel,mix:preferredMix,...preferredEq}=preference.settings;
+presets.push({id:'12',label:'我的首选',model:preferredModel,mix:preferredMix,eq:preferredEq});
+for(const preset of presets.filter(p=>p.id!=='12')){const raw=models.raw,processed=models[preset.model];let data=Float32Array.from(raw,(v,i)=>v*(1-preset.mix)+(processed[i]||0)*preset.mix);const file=join(tmp,'mix.f32');saveFloat(file,data);const filters=preset.id==='01'?'highpass=f=100,lowpass=f=7800,equalizer=f=450:t=q:w=0.8:g=-4,equalizer=f=2200:t=q:w=0.8:g=2,':'';const filtered=join(tmp,'filtered.f32');ff(['-f','f32le','-ar','48000','-ac','1','-i',file,'-af',filters+'anull','-f','f32le',filtered]);const bytes=readFileSync(filtered);data=match(new Float32Array(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.length)),preset.id);saveFloat(file,data);ff(['-f','f32le','-ar','48000','-ac','1','-i',file,'-c:a','aac','-b:a','128k',join(audioDir,preset.id+'_'+preset.label.replaceAll(' · ','_')+'.m4a')]);}
 const payload=JSON.stringify({assets,presets,duration:25});
 const template=readFileSync('scripts/audio-audition.html','utf8');
 writeFileSync(join(out,'课堂声音试听台.html'),template.replace('__AUDIO_DATA__',JSON.stringify({plain:JSON.parse(payload)})));

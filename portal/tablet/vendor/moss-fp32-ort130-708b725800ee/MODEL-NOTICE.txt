@@ -1,0 +1,4 @@
+MossFormerGAN_SE_16K, Alibaba / ClearerVoice-Studio, Apache-2.0.
+Original: https://huggingface.co/alibabasglab/MossFormerGAN_SE_16K
+ONNX conversion: https://huggingface.co/TigreGotico/audiosronnx-mossformergan/tree/5f471c9d92dda80c0883cc850227fd878b334b08
+Modified for browser compatibility: 132 Einsum operations lowered to equivalent broadcasting/MatMul; static input shapes simplified. Float32 parameters retained. See processor/moss_webgpu_export.py.
