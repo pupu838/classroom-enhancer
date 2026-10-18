@@ -14,9 +14,10 @@ RUN python3 -c "from pathlib import Path;import hashlib;assert hashlib.sha256(Pa
 # Keep the complete cuDNN implementation and ONNX CUDA dependencies, but omit
 # unused CUDA components (NCCL, cuSPARSE, cuSOLVER, NPP, NVJPEG). The model and
 # runtime versions are unchanged. Copy symlinks instead of duplicating binaries.
-RUN mkdir /opt/gpu-libs && \
+RUN mkdir -p /opt/gpu-libs/blas /opt/gpu-libs/dnn /opt/gpu-libs/fft /opt/gpu-libs/misc && \
     for pattern in 'libcudart.so*' 'libcublas.so*' 'libcublasLt.so*' 'libcufft.so*' 'libcurand.so*' 'libnvrtc.so*' 'libnvrtc-builtins.so*' 'libnvJitLink.so*' 'libcudnn*.so*'; do \
-      find /usr/local/cuda/targets/x86_64-linux/lib /usr/lib/x86_64-linux-gnu -maxdepth 1 -name "$pattern" -exec cp -P -t /opt/gpu-libs {} +; \
+      case "$pattern" in libcublas*) group=blas;; libcudnn*) group=dnn;; libcufft*) group=fft;; *) group=misc;; esac; \
+      find /usr/local/cuda/targets/x86_64-linux/lib /usr/lib/x86_64-linux-gnu -maxdepth 1 -name "$pattern" -exec cp -P -t /opt/gpu-libs/$group {} +; \
     done
 
 FROM ubuntu:24.04
@@ -24,7 +25,12 @@ ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 CE_MOSS_MODEL=/opt/models/
     PATH=/opt/venv/bin:$PATH NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     NVIDIA_REQUIRE_CUDA="cuda>=12.8"
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=build /opt/gpu-libs/ /usr/local/lib/
+# Separate complete library families into independently verifiable layers.
+# A slow or interrupted registry connection need not resend one giant blob.
+COPY --from=build /opt/gpu-libs/blas/ /usr/local/lib/
+COPY --from=build /opt/gpu-libs/dnn/ /usr/local/lib/
+COPY --from=build /opt/gpu-libs/fft/ /usr/local/lib/
+COPY --from=build /opt/gpu-libs/misc/ /usr/local/lib/
 COPY --from=build /opt/venv/ /opt/venv/
 COPY --from=build /opt/models/ /opt/models/
 COPY --from=build /app/cloud/ /app/cloud/

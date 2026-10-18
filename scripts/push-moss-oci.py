@@ -4,6 +4,7 @@ Uploads public container artifacts only. Never creates or invokes an SCF/GPU.
 https://distribution.github.io/distribution/spec/api/#chunked-upload
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import io
 import json
@@ -134,8 +135,7 @@ class Registry:
 
 
 def push(archive_path, image, username, password):
-    began = time.monotonic(); registry = Registry(image, username, password)
-    rows = []
+    began = time.monotonic()
     with tarfile.open(archive_path) as archive:
         def read(name):
             stream = archive.extractfile(name)
@@ -160,11 +160,33 @@ def push(archive_path, image, username, password):
             raise ValueError('SCF requires the pinned Linux amd64 image')
         if '9000/tcp' not in config.get('config', {}).get('ExposedPorts', {}):
             raise ValueError('SCF port 9000 is missing')
-        for blob in [*manifest['layers'], manifest['config']]:
-            with read('blobs/sha256/' + blob['digest'][7:]) as stream:
-                rows.append(registry.upload(blob['digest'], blob['size'], stream))
+        blobs = [*manifest['layers'], manifest['config']]
+
+    def transfer(blob):
+        # TarFile streams share a file cursor. Each worker needs its own archive,
+        # HTTP client and token; sharing one would corrupt concurrent reads.
+        registry = Registry(image, username, password)
+        try:
+            with tarfile.open(archive_path) as source:
+                stream = source.extractfile('blobs/sha256/' + blob['digest'][7:])
+                if stream is None:
+                    raise ValueError('OCI archive member is missing')
+                with stream:
+                    result = registry.upload(blob['digest'], blob['size'], stream)
+            return result, registry.recoveries
+        finally:
+            registry.client.close()
+
+    # Bound both network pressure and memory (three 8MiB chunks). This only
+    # uploads artifacts; it cannot provision a worker or invoke a GPU.
+    with ThreadPoolExecutor(max_workers=3) as workers:
+        transferred = list(workers.map(transfer, blobs))
+    registry = Registry(image, username, password)
+    try:
         registry.manifest(raw, manifest['mediaType'])
-    return {'uploaded': True, 'image': image, 'manifestSha256': hashlib.sha256(raw).hexdigest(), 'seconds': round(time.monotonic() - began, 2), 'recoveries': registry.recoveries, 'blobs': rows, 'gpuInvocations': 0}
+    finally:
+        registry.client.close()
+    return {'uploaded': True, 'image': image, 'manifestSha256': hashlib.sha256(raw).hexdigest(), 'seconds': round(time.monotonic() - began, 2), 'parallelLayers': 3, 'recoveries': sum(row[1] for row in transferred), 'blobs': [row[0] for row in transferred], 'gpuInvocations': 0}
 
 
 if __name__ == '__main__':
