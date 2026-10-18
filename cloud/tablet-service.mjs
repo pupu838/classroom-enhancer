@@ -1,10 +1,11 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {readSchoolMedia} from './media-reader.mjs';
+import {createMossGateway} from './moss_gateway.mjs';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const same=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const validId=s=>typeof s==='string'&&/^[a-zA-Z0-9_-]{1,200}$/.test(s);
 const fail=(s,status=400)=>{throw Object.assign(Error(s),{status});};
-export function createService({store,asr,secret,origin,sweepSecret,fetcher=fetch}){
+export function createService({store,asr,secret,origin,sweepSecret,fetcher=fetch,moss=createMossGateway()}){
  const save=(k,v)=>store.setJSON(k,v),get=k=>store.get(k,{type:'json',consistency:'strong'});
  const capability=(id,i)=>createHmac('sha256',secret).update(id+':'+i).digest('hex');
  function mediaTime(meta,seconds){const clock=meta.clock;if(!clock)fail('此旧任务需要补充音频时间轴，请重新选择同课次提交；不会重新识别已提交分段',409);const last=clock.at(-1);if(!Number.isFinite(seconds)||seconds<-.05||seconds>last[0]+.2)fail('识别时间戳超出音频范围',502);seconds=Math.max(0,Math.min(last[0],seconds));for(let i=1;i<clock.length;i++){const [x,y]=clock[i],prev=clock[i-1];if(seconds<=x)return meta.start+prev[1]+(seconds-prev[0])*(y-prev[1])/(x-prev[0]);}return meta.end;}
@@ -33,6 +34,7 @@ export function createService({store,asr,secret,origin,sweepSecret,fetcher=fetch
   // Existing installed bridges already forward init jobs. This additive mode
   // provides audio preparation without changing their permissions or tokens.
   if(op==='init'&&b.mode==='media-read')return readSchoolMedia(b,fetcher);
+  if(op==='init'&&['moss-health','moss-segment'].includes(b.mode))return moss(b);
   if(op==='sweep'){
    const entries=await store.list({prefix:'pending/',limit:4,consistency:'strong'}),results=[];
    for(const entry of entries.blobs){const jobId=entry.key.slice('pending/'.length);try{const j=await load(jobId),s=await status(j);results.push(s.state);if(s.state==='failed')await store.delete(entry.key);}catch{results.push('needs_review');}}

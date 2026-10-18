@@ -1,2 +1,4 @@
 # These downloaded modules are verified byte-for-byte by the browser.
 portal/tablet/vendor/moss-*/** -text
+# Runtime filenames are content hashes; checkout must preserve the exact bytes.
+portal/tablet/runtime/*.js -text

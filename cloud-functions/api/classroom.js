@@ -1,6 +1,7 @@
 import {getStore} from '@edgeone/pages-blob';
 import {asrClient} from '../../cloud/tencent-asr.mjs';
 import {createService} from '../../cloud/tablet-service.mjs';
+import {createMossGateway} from '../../cloud/moss_gateway.mjs';
 import {timingSafeEqual} from 'node:crypto';
 export default async function onRequest({request,env}){
  const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
@@ -14,6 +15,6 @@ export default async function onRequest({request,env}){
    if(await store.get('pair-used/'+expected,{consistency:'strong'}))return json({error:'此连接码已使用，需要生成新连接码'},409);
    await store.set('pair-used/'+expected,'used');return json({token:config.CE_API_TOKEN});
   }
-  const asr=asrClient(config.TENCENT_SECRET_ID,config.TENCENT_SECRET_KEY);const service=createService({store,asr,secret:config.CE_API_TOKEN,sweepSecret:config.CE_SWEEP_TOKEN,origin:new URL(request.url).origin});return json(await service(request));}
+  const asr=asrClient(config.TENCENT_SECRET_ID,config.TENCENT_SECRET_KEY);const moss=createMossGateway({url:config.CE_MOSS_URL,token:config.CE_MOSS_TOKEN,proxyKey:config.CE_MOSS_PROXY_KEY,proxySecret:config.CE_MOSS_PROXY_SECRET,enabled:config.CE_MOSS_ENABLED==='1'});const service=createService({store,asr,moss,secret:config.CE_API_TOKEN,sweepSecret:config.CE_SWEEP_TOKEN,origin:new URL(request.url).origin});return json(await service(request));}
  catch(e){return json({error:e.status?e.message:'后台暂时不可用，请稍后查询任务状态'},e.status||500);}
 }

@@ -1,5 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),{webcrypto,createHash}=require('node:crypto');
 const hash=source=>createHash('sha256').update(source).digest('hex');
+const release=JSON.parse(fs.readFileSync('portal/tablet-release.json','utf8'));
+assert.equal(hash(fs.readFileSync('portal'+release.path)),release.sha256,'published candidate must match its manifest byte-for-byte');
 async function run({cached=null,remote='new runtime',badHash=false,networkError=false,pathOverride,delay=0}={}){
  const document={documentElement:{dataset:{}},visibilityState:'visible'},saved=[],calls=[];
  const fallback={version:'0.7.0',source:'bundled fallback',sha256:hash('bundled fallback')};

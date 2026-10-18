@@ -18,7 +18,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: pip install fastapi==0.115.12 httpx==0.28.1 pytest==8.3.5
+      - run: pip install fastapi==0.115.12 httpx==0.28.1 pytest==8.3.5 numpy==2.2.5
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm install --ignore-scripts
       - run: python build.py && npm run build:connector
       - run: python -m pytest tests/cloud -q
@@ -30,3 +31,11 @@ jobs:
         run: node tests/lesson-cloud-test.mjs && node tests/tablet-service-test.mjs && node tests/live-audio-test.mjs && node tests/rnnoise-test.mjs && node tests/tablet-unified-test.cjs
       - name: Keep withdrawn iPad Moss test disabled
         run: node tests/moss-disabled-test.mjs
+      - name: Check bounded cloud Moss audio and gateway
+        run: |
+          node tests/cloud-audio-test.mjs
+          node tests/moss-gateway-test.mjs
+          node tests/moss-panel-test.cjs
+          mkdir -p tests/artifacts
+          ffmpeg -v error -f lavfi -i testsrc2=size=320x180:rate=10 -f lavfi -i sine=frequency=1200:sample_rate=16000 -t 14 -c:v libx264 -preset ultrafast -c:a aac -movflags +faststart tests/artifacts/window-fixture.mp4
+          node tests/audio-window-test.mjs tests/artifacts/window-fixture.mp4
