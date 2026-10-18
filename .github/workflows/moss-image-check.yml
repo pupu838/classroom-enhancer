@@ -2,14 +2,17 @@ name: Moss Tencent image readiness
 on:
   push:
     branches: [cloud-pipeline-v0.5]
-    paths: ['cloud/Moss.Dockerfile*', 'cloud/moss_*.py', 'cloud/moss-requirements.txt', '.github/workflows/moss-image-check.yml', 'scripts/check-moss-image.py']
+    paths: ['cloud/Moss.Dockerfile*', 'cloud/moss_*.py', 'cloud/moss-requirements.txt', '.github/workflows/moss-image-check.yml', 'scripts/check-moss-image.py', 'scripts/push-moss-oci.py']
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: moss-tencent-private-image
+  cancel-in-progress: false
 jobs:
   image:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -62,24 +65,27 @@ jobs:
           name: moss-tencent-image-readiness
           path: /tmp/moss-image-readiness.json
           retention-days: 14
-      - name: Authenticate to the configured private Tencent registry
-        if: ${{ success() && vars.CE_TCR_IMAGE != '' }}
-        uses: docker/login-action@v3
-        with:
-          registry: ccr.ccs.tencentyun.com
-          username: ${{ secrets.CE_TCR_USERNAME }}
-          password: ${{ secrets.CE_TCR_PASSWORD }}
       - name: Push pinned image without deploying or invoking a GPU
         if: ${{ success() && vars.CE_TCR_IMAGE != '' }}
+        timeout-minutes: 30
         env:
           CE_TCR_IMAGE: ${{ vars.CE_TCR_IMAGE }}
+          CE_TCR_USERNAME: ${{ secrets.CE_TCR_USERNAME }}
+          CE_TCR_PASSWORD: ${{ secrets.CE_TCR_PASSWORD }}
         run: |
           case "$CE_TCR_IMAGE" in
             ccr.ccs.tencentyun.com/*/*) ;;
             *) echo 'Only the configured Tencent personal registry is allowed'; exit 1 ;;
           esac
-          docker buildx build --platform linux/amd64 -f cloud/Moss.Dockerfile --provenance=false -t "$CE_TCR_IMAGE:$GITHUB_SHA" --push .
+          python -m pip install --disable-pip-version-check httpx==0.28.1
+          python scripts/push-moss-oci.py /tmp/moss-image.tar "$CE_TCR_IMAGE:$GITHUB_SHA" /tmp/moss-registry-transfer.json
           echo "Private Tencent image uploaded for commit $GITHUB_SHA; no SCF function created or GPU invoked." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && vars.CE_TCR_IMAGE != '' }}
+        with:
+          name: moss-private-registry-transfer
+          path: /tmp/moss-registry-transfer.json
+          retention-days: 14
       - name: Cleanup
         if: always()
         run: |
