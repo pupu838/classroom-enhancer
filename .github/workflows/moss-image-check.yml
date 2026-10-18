@@ -60,6 +60,24 @@ jobs:
           name: moss-tencent-image-readiness
           path: /tmp/moss-image-readiness.json
           retention-days: 14
+      - name: Authenticate to the configured private Tencent registry
+        if: ${{ success() && vars.CE_TCR_IMAGE != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ccr.ccs.tencentyun.com
+          username: ${{ secrets.CE_TCR_USERNAME }}
+          password: ${{ secrets.CE_TCR_PASSWORD }}
+      - name: Push pinned image without deploying or invoking a GPU
+        if: ${{ success() && vars.CE_TCR_IMAGE != '' }}
+        env:
+          CE_TCR_IMAGE: ${{ vars.CE_TCR_IMAGE }}
+        run: |
+          case "$CE_TCR_IMAGE" in
+            ccr.ccs.tencentyun.com/*/*) ;;
+            *) echo 'Only the configured Tencent personal registry is allowed'; exit 1 ;;
+          esac
+          docker buildx build --platform linux/amd64 -f cloud/Moss.Dockerfile --provenance=false -t "$CE_TCR_IMAGE:$GITHUB_SHA" --push .
+          echo "Private Tencent image uploaded for commit $GITHUB_SHA; no SCF function created or GPU invoked." >> "$GITHUB_STEP_SUMMARY"
       - name: Cleanup
         if: always()
         run: |
