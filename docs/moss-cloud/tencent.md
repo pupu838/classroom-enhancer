@@ -39,6 +39,8 @@
 
 SCF 函数 URL 必须启用 CAM 鉴权，应用后台独立口令使用 X-CE-Moss-Token，避免与 TC3 Authorization 冲突。EdgeOne 增加 CE_MOSS_SCF_SECRET_ID / CE_MOSS_SCF_SECRET_KEY / CE_MOSS_SCF_UIN（临时密钥另带 CE_MOSS_SCF_SESSION_TOKEN），仅授予目标函数的 scf:InvokeFunctionUrl。不要用 ASR-only 凭据，也不要把主账号管理密钥放进后台。缺少专用 CAM 配置时，健康检查仍返回未开通。
 
+已创建上述单函数调用策略 ce-moss-invoke-only；专用编程用户 classroom-moss-invoker 的创建因腾讯云图片验证码暂停，需用户手动完成验证；尚未拿到调用密钥。首轮只发两次短请求、预算不超过 5 元的请求已发给用户，未收到确认前不创建或调用 GPU。
+
 授权和配额齐备后：将同一镜像推入已确认的私有 TCR → 创建无公网触发器的函数并限制并发 → 配置随机独立处理口令 → 配置 HTTPS 入口 → 用 check-moss-remote.py 发两次请求 → 验证 GPU、音质、冷/热吞吐与账单 → 真实回放持续验证 → 发布 0.10.0 并开启 CE_MOSS_ENABLED。开关关闭前不改线上入口。
 
 停用：先关闭 EdgeOne 的 CE_MOSS_ENABLED，再将函数预留并发设为 0、移除触发器；未配置预置并发。镜像和函数配置留存是否产生存储费用需看所用仓库；不能只关闭网页就宣称所有费用停止。
