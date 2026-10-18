@@ -4,15 +4,20 @@ on:
     branches: [cloud-pipeline-v0.5]
     paths: ['cloud/Moss.Dockerfile*', 'cloud/moss_*.py', 'cloud/moss-requirements.txt', '.github/workflows/moss-image-check.yml', 'scripts/check-moss-image.py', 'scripts/push-moss-oci.py']
   workflow_dispatch:
+    inputs:
+      readiness_only:
+        description: 'Build, dependency, listener and size checks only; no registry write or GPU'
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
-  group: moss-tencent-private-image
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.readiness_only && format('moss-readiness-{0}', github.run_id) || 'moss-tencent-private-image' }}
   cancel-in-progress: false
 jobs:
   image:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 135
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -66,8 +71,8 @@ jobs:
           path: /tmp/moss-image-readiness.json
           retention-days: 14
       - name: Push pinned image without deploying or invoking a GPU
-        if: ${{ success() && vars.CE_TCR_IMAGE != '' }}
-        timeout-minutes: 30
+        if: ${{ success() && vars.CE_TCR_IMAGE != '' && !inputs.readiness_only }}
+        timeout-minutes: 120
         env:
           CE_TCR_IMAGE: ${{ vars.CE_TCR_IMAGE }}
           CE_TCR_USERNAME: ${{ secrets.CE_TCR_USERNAME }}
@@ -81,7 +86,7 @@ jobs:
           python scripts/push-moss-oci.py /tmp/moss-image.tar "$CE_TCR_IMAGE:$GITHUB_SHA" /tmp/moss-registry-transfer.json
           echo "Private Tencent image uploaded for commit $GITHUB_SHA; no SCF function created or GPU invoked." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
-        if: ${{ success() && vars.CE_TCR_IMAGE != '' }}
+        if: ${{ success() && vars.CE_TCR_IMAGE != '' && !inputs.readiness_only }}
         with:
           name: moss-private-registry-transfer
           path: /tmp/moss-registry-transfer.json
