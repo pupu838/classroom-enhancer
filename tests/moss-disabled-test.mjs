@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const html=readFileSync('portal/moss-check.html','utf8');
+assert.match(html,/测试已停用/);assert(!/<script\b|<button\b/i.test(html),'withdrawn page must contain no runnable test');
+let message,closed=false;
+const sandbox={postMessage:value=>message=value,self:{close(){closed=true;}},fetch(){throw Error('Disabled test must never fetch');},importScripts(){throw Error('Disabled test must never import runtime');},navigator:{get gpu(){throw Error('Disabled test must never touch GPU');}}};
+vm.runInNewContext(readFileSync('portal/moss-check-worker.js','utf8'),sandbox);sandbox.self.onmessage({data:{type:'start'}});
+assert.equal(message.type,'error');assert.match(message.error,/停用/);assert.equal(closed,true);
+const config=JSON.parse(readFileSync('edgeone.json','utf8'));
+for(const path of ['/moss-check.html','/moss-check-worker.js'])assert(config.headers.some(r=>r.source===path&&r.headers.some(h=>h.key==='Cache-Control'&&h.value==='no-store')));
+assert(!readFileSync('scripts/audio-audition.html','utf8').includes('href="moss-check.html"'));
+console.log('PASS withdrawn page has no script/controls, cached worker refuses all starts without fetch/GPU, no-store routes, audition retry link removed');

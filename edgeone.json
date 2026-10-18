@@ -9,6 +9,24 @@
   ],
   "headers": [
     {
+      "source": "/moss-check.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
+      "source": "/moss-check-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
       "source": "/tablet/vendor/*",
       "headers": [
         {

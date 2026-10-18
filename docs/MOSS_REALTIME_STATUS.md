@@ -1,5 +1,36 @@
 # Moss first-choice integration — still in progress
 
+## Physical iPad failure: test withdrawn (2026-10-18)
+
+The user reports repeated crashes and automatic reloads on the M1 iPad, then an
+EdgeOne 401 page. This overrides the positive desktop-only test results below.
+Do not ask the user to repeat the local Moss test or claim that worker isolation
+makes the model stable on iPad. The exact crash cause is not established.
+
+The test HTML is now a static withdrawal notice without executable scripts or
+buttons. The old worker URL is a kill switch that posts a disabled error and
+closes without fetching assets or touching the GPU. Both routes send no-store.
+The audition's test link is removed; the exact selected profile remains saved.
+The school runtime stays 0.9.2 and has never activated Moss.
+
+The 401 is a separate hosting access issue. At triage, root, test page, and
+runtime manifest returned HTTP 200 from the agent's network. Official Makers
+documentation says default project/deployment domains in Global (excluding
+Mainland China) return 401 from Mainland networks. A stable custom domain is
+recommended by the provider. User's actual exit network is not independently
+verified. Do not characterize this page as a school-login failure.
+
+Sources: https://pages.edgeone.ai/document/error-codes and
+https://pages.edgeone.ai/document/domain-overview .
+
+An async question asks whether the user has an available domain/subdomain.
+No domain has been bought or invented. Stable access is still pending.
+
+For the chosen Moss sound, client-side live processing is not a viable delivery
+in the current implementation. Discuss a short-segment server-side path and its
+startup delay/cost after resolving access; do not silently buy GPU service or
+replace Moss with RNNoise. The original requirement remains unfinished.
+
 The user selected `preferred-audition.json` and explicitly requested that it be
 used in the **school replay player**, not merely saved on the audition page.
 Keep the entire profile unchanged, including gain 0 dB. The user will adjust
@@ -33,7 +64,8 @@ listening volume. Do not run another loudness preference trial.
 or replace it with RNNoise under the same name.** The current school runtime
 remains 0.9.2 with its independent real-time RNNoise controls.
 
-First obtain the M1 iPad device-check result. Suggested throughput headroom is
+Historical plan, now superseded by the crash report above: obtain an M1 iPad
+device-check result. Suggested throughput headroom was
 under 1.875 s per 2.5 s at 1x, or under 0.9375 s at 2x; this is a planning gate,
 not a stability guarantee. Physical device measurements are needed because the
 available computer uses a different GPU and browser platform.

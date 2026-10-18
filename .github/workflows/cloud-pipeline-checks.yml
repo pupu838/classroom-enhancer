@@ -28,3 +28,5 @@ jobs:
 
       - name: Check tablet stability and cloud resume
         run: node tests/lesson-cloud-test.mjs && node tests/tablet-service-test.mjs && node tests/live-audio-test.mjs && node tests/rnnoise-test.mjs && node tests/tablet-unified-test.cjs
+      - name: Keep withdrawn iPad Moss test disabled
+        run: node tests/moss-disabled-test.mjs
