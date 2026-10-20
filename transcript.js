@@ -37,16 +37,16 @@ function installTranscript(shadow,getVideo) {
  async function persist(){const current=key;try{await storage({pack,selected,offset,fingerprint});}catch{if(key===current)message('当前可用，但本机保存失败，请导出数据包备份。');}}
  async function route(){const id=lesson();if(id===key)return;key=id;pack=null;selected='school';offset=0;fingerprint='';editing=null;token++;const ticket=++restore;paint();changed();try{const stored=await storage();if(ticket!==restore)return;if(stored?.pack){pack=validate(stored.pack);fingerprint=await hash(pack);if(ticket!==restore)return;selected=pack.tracks.some(t=>t.id===stored.selected)?stored.selected:'school';offset=finite(stored.offset)&&Math.abs(stored.offset)<=30?stored.offset:0;paint();changed();}}catch{if(ticket===restore)message('未能恢复本机字幕，请重新导入。');}if(ticket===restore)fetchCloud();}
 
- let cloudBusy=false;
- async function fetchCloud(){
+ let cloudBusy=false,completedCloudLesson='';
+ async function fetchCloud(force=true){
   const tablet=document.documentElement.dataset.ceTabletBridge==='1';
-  if(cloudBusy||(!tablet&&(typeof chrome==='undefined'||!chrome.runtime?.sendMessage))||!/^[-A-Za-z0-9_]{1,200}$/.test(key))return;
+  if(cloudBusy||!force&&completedCloudLesson===key||(!tablet&&(typeof chrome==='undefined'||!chrome.runtime?.sendMessage))||!/^[-A-Za-z0-9_]{1,200}$/.test(key))return;
   cloudBusy=true;const expected=key;
   try{
    const response=tablet?await new Promise((resolve,reject)=>{const requestId=crypto.randomUUID(),timer=setTimeout(()=>{window.removeEventListener('message',receive);reject(Error('字幕服务连接超时'));},65000);function receive(e){const d=e.data;if(e.source!==window||e.origin!==location.origin||d?.ce!=='cloud-response'||d.requestId!==requestId)return;clearTimeout(timer);window.removeEventListener('message',receive);resolve(d);}window.addEventListener('message',receive);window.postMessage({ce:'cloud-request',requestId,op:'lecture',id:expected},location.origin);}):await new Promise((resolve,reject)=>chrome.runtime.sendMessage({ceCloud:1,op:'lecture',id:expected},r=>{const e=chrome.runtime.lastError;if(e)reject(Error(e.message));else resolve(r);}));
    if(key!==expected)return;if(!response?.ok)throw Error(response?.error||'未连接云端字幕服务');
    if(response.data.state!=='complete'){message('云端字幕：'+response.data.state+(response.data.error?' · '+response.data.error:''));return;}
-   const ready=validate(response.data.package),fp=await hash(ready);if(key!==expected)return;
+   const ready=validate(response.data.package),fp=await hash(ready);if(key!==expected)return;completedCloudLesson=expected;
    // Keep manual revisions. Cloud refresh never overwrites a different local revision silently.
    if(pack?.tracks.some(t=>t.kind==='revised'&&t.id!=='textbook-corrected')){message('云端字幕已就绪；当前有手动修订，保留本机版本。');return;}
    if(pack?.packageId===ready.packageId&&fingerprint===fp)return;
@@ -55,7 +55,7 @@ function installTranscript(shadow,getVideo) {
  }
  $('ct-cloud').onclick=fetchCloud;
  window.addEventListener('ce-cloud-ready',fetchCloud);
- const cloudTimer=setInterval(fetchCloud,30000);window.addEventListener('pagehide',()=>clearInterval(cloudTimer));
+ const cloudTimer=setInterval(()=>fetchCloud(false),30000);window.addEventListener('pagehide',()=>clearInterval(cloudTimer));
  function download(name,data){const u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
  $('ct-file').onchange=async()=>{const f=$('ct-file').files[0];if(!f)return;const ticket=++token;++restore;try{if(f.size>8*1024*1024)throw Error('数据包超过 8 MB。');const ready=validate(JSON.parse(await f.text()));const fp=await hash(ready);if(ticket!==token||lesson()!==key)return;const v=getVideo();if(Number.isFinite(v?.duration)&&Math.abs(v.duration-ready.media.duration)>2)throw Error('数据包时长与视频不匹配。');pack=ready;fingerprint=fp;selected='school';editing=null;paint();changed();await persist();message('已导入。请选择字幕来源，并核对几处音画时间。学校原字幕未被覆盖。');}catch(e){if(ticket===token)message('未导入：'+e.message+' 之前的数据保留。');}$('ct-file').value='';};
  $('ct-source').onchange=()=>{selected=$('ct-source').value;editing=null;paint();changed();persist();};

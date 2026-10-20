@@ -10,7 +10,6 @@ import {classroomLessonId} from './lesson-context.mjs';
 import {createSchoolMediaRequest} from './browser-media.mjs';
 import {remuxSparseAudio} from './sparse-audio.mjs';
 import {createAudioRangeSource} from './audio-range-source.mjs';
-import {openAudioWindows} from './audio-window.mjs';
 const SCHOOL='https://ylb.nwafu.edu.cn';
 const PORTAL='https://classroom-enhancer-global-5rcwipvd.edgeone.dev';
 const PORTALS=new Set([PORTAL,'https://classroom-enhancer-workbench-1um3o2ms.edgeone.cool']);
@@ -89,17 +88,6 @@ if(location.origin===SCHOOL && !window.__CE_SCHOOL_CONNECTOR_V1__){
   window.postMessage({ce:'media-request',requestId,url,start,end},SCHOOL);
  });}
  const mediaRequest=createSchoolMediaRequest(bridgeMediaRequest);
- if(TABLET){window.__CE_MOSS_CHECK__=()=>cloudCall('init',{job:{mode:'moss-health'}});window.dispatchEvent(new Event('ce-moss-check'));}
- const windowIndexes=new Map();let windowLesson='';
- if(TABLET)window.__CE_AUDIO_WINDOW__=async(url,start,end,signal)=>{
-  const lesson=classroomLessonId();if(!lesson)throw Error('请先打开具体课次');
-  if(windowLesson!==lesson){windowIndexes.clear();windowLesson=lesson;}
-  let entry=windowIndexes.get(url);if(!entry){entry={relay:false,index:null};windowIndexes.set(url,entry);while(windowIndexes.size>3)windowIndexes.delete(windowIndexes.keys().next().value);}
-  const native=(...args)=>{if(entry.relay)throw Error('改用云端小段读取');return mediaRequest(...args);};
-  const source=createAudioRangeSource(url,native,cloudCall,signal,text=>{if(text.includes('改用云端'))entry.relay=true;});
-  if(!entry.index){const pending=openAudioWindows(source,signal);entry.index=pending;try{await pending;}catch(e){if(entry.index===pending)windowIndexes.delete(url);throw e;}}
-  return (await entry.index).read(start,end,source,signal);
- };
  function selectSegments(detail){
   const files=[...(detail.teacherViewFiles||[]),...(detail.studentViewFiles||[]),...(detail.vgaViewFiles||[])];const groups=new Map();
   for(const f of files){const key=f.startTime||f.serialNum||'first';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(f);}

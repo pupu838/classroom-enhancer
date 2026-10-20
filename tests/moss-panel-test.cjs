@@ -1,8 +1,12 @@
-const {JSDOM}=require('jsdom'),fs=require('node:fs'),assert=require('node:assert/strict');
+const {JSDOM}=require('jsdom'),fs=require('node:fs'),assert=require('node:assert/strict'),{buildSync}=require('esbuild');
 (async()=>{const dom=new JSDOM('<video></video>',{url:'https://ylb.nwafu.edu.cn/TeachingCenterStudentWeb/index.html#/fullpage/aiClassroom.htm?videoId=lesson-1',runScripts:'outside-only'}),w=dom.window;try{
- w.document.documentElement.dataset.ceTabletBridge='1';w.HTMLElement.prototype.getBoundingClientRect=()=>({left:0,top:0,width:800,height:450});w.eval(fs.readFileSync('edge/content.js','utf8'));const root=w.document.getElementById('nwa-classroom-host').shadowRoot,$=id=>root.getElementById(id);assert($('ce-moss-start').disabled);
- w.__CE_MOSS_CHECK__=async()=>({protocol:'ce-moss-health/1',ready:false,model:'moss-se16k-fp32-v1'});w.dispatchEvent(new w.Event('ce-moss-check'));await new Promise(r=>setTimeout(r,0));assert($('ce-moss-start').disabled);assert.match($('ce-moss-status').textContent,/尚未开通/);
- let enabled=false,compared=false;w.__CE_LIVE_AUDIO__={state:()=>({enhanced:false,cloud:{enabled,compared}}),async setCloudEnhanced(value){enabled=value;w.dispatchEvent(new w.Event('ce-audio-state'));w.dispatchEvent(new w.CustomEvent('ce-cloud-audio-status',{detail:enabled?'云端准备中，原声继续':'已恢复原声'}));},compareCloud(value){compared=value;w.dispatchEvent(new w.Event('ce-audio-state'));}};
- w.__CE_MOSS_CHECK__=async()=>({protocol:'ce-moss-health/1',ready:true,model:'moss-se16k-fp32-v1'});w.dispatchEvent(new w.Event('ce-moss-check'));await new Promise(r=>setTimeout(r,0));assert(!$('ce-moss-start').disabled);await $('ce-moss-start').onclick();assert(enabled);assert.match($('ce-moss-start').textContent,/关闭/);assert.match($('ce-moss-status').textContent,/原声继续/);$('ce-moss-ab').click();assert(compared);assert.match($('ce-moss-ab').textContent,/返回/);await $('ce-moss-start').onclick();assert(!enabled);assert($('ce-moss-ab').disabled);
- console.log('PASS unavailable service disables action, configured service enables explicit start, independent original comparison and off state');
+ w.document.documentElement.dataset.ceTabletBridge='1';w.HTMLElement.prototype.getBoundingClientRect=()=>({left:0,top:0,width:800,height:450});
+ let calls=0;w.__CE_MOSS_CHECK__=async()=>{calls++;throw Error('withdrawn GPU cannot be called');};
+ w.eval(fs.readFileSync('edge/content.js','utf8'));const root=w.document.getElementById('nwa-classroom-host').shadowRoot;
+ assert.equal(root.getElementById('ce-moss-start'),null);assert.equal(root.getElementById('ce-moss-ab'),null);
+ root.getElementById('open').click();w.dispatchEvent(new w.Event('ce-moss-check'));w.dispatchEvent(new w.Event('ce-audio-state'));await new Promise(r=>setTimeout(r,0));assert.equal(calls,0);
+ assert(root.getElementById('ce-cloud-current'));assert(root.getElementById('ce-audio-download'));
+ const runtime=buildSync({entryPoints:['scripts/school-connector.mjs'],bundle:true,format:'iife',write:false,target:'safari16'}).outputFiles[0].text;
+ for(const withdrawn of ['moss-segment','moss-health','moss-se16k-fp32-v1','__CE_AUDIO_WINDOW__'])assert(!runtime.includes(withdrawn),'withdrawn GPU path remains in runtime: '+withdrawn);
+ console.log('PASS GPU denoising removed: no controls, health requests or model pipeline; subtitles and independent audio download retained');
 }finally{w.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

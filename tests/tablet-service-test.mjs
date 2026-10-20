@@ -9,6 +9,8 @@ const request=(op,data={},token=secret)=>api(new Request('https://fixture.exampl
 const bytes=Buffer.from('synthetic audio'),sha=createHash('sha256').update(bytes).digest('hex');
 const meta={lectureId:'lesson-1',courseId:'course-1',name:'合成测试',duration:20,sha256:sha,parts:[{start:0,end:10,size:bytes.length,sha256:sha,clock:[[0,0],[10,10]]},{start:10,end:20,size:bytes.length,sha256:sha,clock:[[0,0],[10,10]]}]};
 await assert.rejects(()=>request('health',{},'wrong'),/连接口令无效/);
+assert.equal((await request('init',{mode:'moss-health'})).ready,false,'withdrawn GPU service remains disabled by default');
+await assert.rejects(()=>request('init',{mode:'moss-segment'}),/尚未开通/);
 await assert.rejects(()=>request('init',{...meta,parts:[{...meta.parts[0],start:1}]}),/缺口/);
 const job=await request('init',meta);assert.equal(job.state,'uploading');
 await assert.rejects(()=>request('part',{id:job.id,index:0,data:Buffer.from('wrong').toString('base64')}),/校验失败/);assert.equal(calls,0);
