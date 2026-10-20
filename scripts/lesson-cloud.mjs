@@ -13,14 +13,16 @@ export function installLessonCloud({root,prepare,getRecord,cloudCall=call,submit
  }
  async function query(){if(disposed||busy||checking||!current)return;const expected=current;checking=true;check.disabled=true;lastCheck=Date.now();try{const settings=await cloudCall('settings');if(expected!==lesson()||busy)return;if(!settings.configured){job=null;start.disabled=false;say('请先到“设置”连接云端服务；连接后点“生成本节云端字幕”。');return;}const result=await cloudCall('lecture',{id:expected});if(expected===lesson()&&!busy)paint(result);}catch(e){if(expected===lesson())say('查询暂未完成：'+e.message+'。可再次查询；不会重新提交识别。');}finally{checking=false;check.disabled=busy||!current;}}
  async function run(){if(busy||disposed)return;const id=lesson();if(!id){say('请先打开一节具体回放。');return;}current=id;busy=true;controller=new AbortController();const signal=controller.signal;startedAt=Date.now();start.disabled=true;check.disabled=true;cancel.disabled=false;say('正在检查本节是否已有字幕…');
-  try{const settings=await cloudCall('settings');if(!settings.configured)throw Error('请先到“设置”连接云端服务');const known=await cloudCall('lecture',{id});if(signal.aborted)throw Error('已停止上传');if(['complete','transcribing','failed'].includes(known.state)){paint(known);return;}
-   const record=await getRecord(id);if(signal.aborted)throw Error('已停止上传');const report=text=>{if(id===lesson())say(text+elapsed());};
-   const blob=await prepare(id,signal,text=>report('准备音频：'+text));if(signal.aborted)throw Error('已停止上传');
+  const ensureCurrent=()=>{if(signal.aborted||disposed||id!==lesson())throw Error('已停止上传');};
+  try{const settings=await cloudCall('settings');ensureCurrent();if(!settings.configured)throw Error('请先到“设置”连接云端服务');const known=await cloudCall('lecture',{id});ensureCurrent();if(['complete','transcribing','failed'].includes(known.state)){paint(known);return;}
+   const record=await getRecord(id);ensureCurrent();const report=text=>{if(id===lesson())say(text+elapsed());};
+   const blob=await prepare(id,signal,text=>report('准备音频：'+text));ensureCurrent();
    const result=await submit({record,name:record.name,blob,parts:1,status:report,cloudCall,signal,onJob:value=>{if(id===lesson())job=value;}});if(id===lesson())paint(result);
   }catch(e){if(id===lesson())say(signal.aborted?'已停止继续上传。服务器已确认的分段会保留；再次点击可继续提交。已完整提交的任务仍在云端转录。':'本次提交未完成：'+e.message+'。已确认分段会保留，请先查询进度。');}
   finally{busy=false;controller=null;startedAt=0;cancel.disabled=true;check.disabled=!lesson();if(id===lesson()){start.textContent=job?.state==='complete'?'本节字幕已完成':job?.state==='transcribing'?'本节正在转录':job?.state==='uploading'?'继续提交本节字幕':'生成本节云端字幕';start.disabled=['complete','transcribing','failed'].includes(job?.state);}else route();}
  }
- function route(){const id=lesson(),configured=document.documentElement.dataset.ceCloudConfigured||'';if(id!==current){controller?.abort();current=id;job=null;lastCheck=0;start.textContent='生成本节云端字幕';start.disabled=busy||!id;check.disabled=busy||!id;say(id?'正在恢复本节云端字幕状态…':'打开具体课次后，可一键生成整课字幕。');}if(configured!==lastConfigured){lastConfigured=configured;lastCheck=0;}if(id&&!busy&&!checking&&Date.now()-lastCheck>=30000)query();}
+ function route(){const id=lesson(),configured=document.documentElement.dataset.ceCloudConfigured||'';if(id!==current){controller?.abort();current=id;job=null;lastCheck=0;start.textContent='生成本节云端字幕';start.disabled=busy||!id;check.disabled=busy||!id;say(id?'正在恢复本节云端字幕状态…':'打开具体课次后，可一键生成整课字幕。');}if(configured!==lastConfigured){lastConfigured=configured;job=null;lastCheck=0;}if(id&&!busy&&!checking&&job?.state!=='complete'&&Date.now()-lastCheck>=30000)query();}
  start.onclick=run;check.onclick=query;cancel.onclick=()=>{controller?.abort();cancel.disabled=true;say('正在停止继续上传，等待当前请求确认…');};
- const timer=setInterval(route,1000);const destroy=()=>{disposed=true;controller?.abort();clearInterval(timer);};window.addEventListener('pagehide',destroy,{once:true});route();return {start:run,query,destroy};
+ window.addEventListener('hashchange',route);window.addEventListener('popstate',route);
+ const timer=setInterval(route,1000);const destroy=()=>{disposed=true;controller?.abort();clearInterval(timer);window.removeEventListener('hashchange',route);window.removeEventListener('popstate',route);};window.addEventListener('pagehide',destroy,{once:true});route();return {start:run,query,destroy};
 }
