@@ -16,6 +16,11 @@ from urllib.parse import urlparse
 import httpx
 
 p=argparse.ArgumentParser();p.add_argument('aac',help='a previously prepared eight-second AAC MP4 window');p.add_argument('report');p.add_argument('--audio-dir',help='optional private directory for the returned WAV clips');p.add_argument('--rounds',type=int,choices=(1,2),default=2,help='maximum requests; stops at the first failure');args=p.parse_args()
+# An operator can freeze all local acceptance calls while checking the bill.
+# Check before credentials, audio reads, or constructing any HTTP client. The
+# marker is ignored by Git and never becomes a production configuration.
+if os.environ.get('CE_MOSS_REMOTE_BLOCKED') == '1' or (Path(__file__).resolve().parents[1] / '.env.moss-remote-blocked').exists():
+    raise SystemExit('Remote GPU calls are blocked locally; no request issued. Resolve the billing hold before removing the local marker.')
 url=os.environ['CE_MOSS_URL'];token=os.environ['CE_MOSS_TOKEN'];parsed=urlparse(url)
 assert parsed.scheme=='https' and not parsed.username and not parsed.query and len(token)>=32
 headers={'Content-Type':'application/json','Authorization':'Bearer '+token}
