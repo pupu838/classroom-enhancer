@@ -26,7 +26,14 @@ class MossEngine:
         if self._profiled:
             options.enable_profiling = True
             options.profile_file_prefix = '/tmp/ce-moss-ort'
-        providers = [('CUDAExecutionProvider', {'use_tf32': '0', 'gpu_mem_limit': str(4 * 1024**3), 'arena_extend_strategy': 'kSameAsRequested'})] if require_gpu else ['CPUExecutionProvider']
+        # ORT's default maps to cuDNN heuristic B, which failed to create a
+        # plan on our SCF T4. Heuristic A preserves this FP32 model and avoids
+        # the failed plan search. DEFAULT is an explicit diagnostic alternative.
+        search = os.environ.get('CE_MOSS_CUDNN_SEARCH', 'HEURISTIC')
+        if search not in ('HEURISTIC', 'DEFAULT', 'EXHAUSTIVE'):
+            raise RuntimeError('无效的 cuDNN 算法选择')
+        providers = [('CUDAExecutionProvider', {'use_tf32': '0', 'gpu_mem_limit': str(4 * 1024**3),
+            'arena_extend_strategy': 'kSameAsRequested', 'cudnn_conv_algo_search': search})] if require_gpu else ['CPUExecutionProvider']
         self.session = ort.InferenceSession(str(model_path), sess_options=options, providers=providers)
         if require_gpu and self.session.get_providers()[0] != 'CUDAExecutionProvider':
             raise RuntimeError('GPU 初始化失败')

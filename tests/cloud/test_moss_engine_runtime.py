@@ -18,9 +18,13 @@ class RuntimePolicyTest(unittest.TestCase):
             def get_providers(self): return self.providers
             def disable_fallback(self): self.disabled = True
         session = Session()
+        created = []
+        def create(*args, **kwargs):
+            created.append(kwargs)
+            return session
         ort = SimpleNamespace(SessionOptions=SimpleNamespace,
             get_available_providers=lambda: session.providers,
-            InferenceSession=lambda *args, **kwargs: session)
+            InferenceSession=create)
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'model.onnx'
             path.write_bytes(b'fixture')
@@ -28,6 +32,9 @@ class RuntimePolicyTest(unittest.TestCase):
                     patch('cloud.moss_engine.MODEL_SHA256', hashlib.sha256(b'fixture').hexdigest()):
                 engine = MossEngine(path)
             self.assertTrue(session.disabled)
+            options = created[0]['providers'][0][1]
+            self.assertEqual(options['cudnn_conv_algo_search'], 'HEURISTIC')
+            self.assertEqual(options['use_tf32'], '0')
             with patch('cloud.moss_engine.enhance', side_effect=RuntimeError('CUDA execution failed')) as process:
                 with self.assertRaisesRegex(RuntimeError, 'CUDA execution failed'):
                     engine.enhance(object())
