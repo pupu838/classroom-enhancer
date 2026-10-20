@@ -1,10 +1,12 @@
 import base64
 import hashlib
 import io
+import os
 from pathlib import Path
 import subprocess
 import unittest
 import wave
+from unittest.mock import patch
 import numpy as np
 from fastapi.testclient import TestClient
 from cloud.moss_service import create_app, validate
@@ -71,6 +73,20 @@ class ServiceTest(unittest.TestCase):
         body = dict(self.body, data=base64.b64encode(bad).decode(), sha256=hashlib.sha256(bad).hexdigest())
         self.assertEqual(self.client.post('/enhance', json=body, headers=self.headers).status_code, 422)
         self.assertEqual(self.engine.calls, 0)
+
+    def test_opt_in_diagnostics_distinguish_warm_instance_and_cache(self):
+        with patch.dict(os.environ, {'CE_MOSS_DIAGNOSTICS': '1'}):
+            client = TestClient(create_app(lambda: self.engine, token='test-only-' * 5))
+        first = client.post('/enhance', json=self.body, headers=self.headers).json()
+        second = client.post('/enhance', json=dict(self.body, trimSeconds=.7), headers=self.headers).json()
+        cached = client.post('/enhance', json=self.body, headers=self.headers).json()
+        self.assertTrue(first['diagnostics']['coldModel'])
+        self.assertFalse(second['diagnostics']['coldModel'])
+        self.assertEqual(first['diagnostics']['instanceId'], second['diagnostics']['instanceId'])
+        self.assertTrue(cached['diagnostics']['cacheHit'])
+        self.assertEqual(cached['diagnostics']['invocationIndex'], 3)
+        self.assertEqual(self.engine.calls, 2)
+        self.assertNotIn('diagnostics', self.client.post('/enhance', json=self.body, headers=self.headers).json())
 
     def test_stft_identity_and_silence(self):
         class Pass:

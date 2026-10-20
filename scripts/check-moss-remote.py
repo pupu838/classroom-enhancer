@@ -87,7 +87,7 @@ with httpx.Client(timeout=55,follow_redirects=False) as client:
         if args.audio_dir:
             destination=Path(args.audio_dir);destination.mkdir(parents=True,exist_ok=True)
             (destination/f'moss-round-{len(rows)+1}.wav').write_bytes(data)
-        rows.append({'roundTripSeconds':elapsed,'inferenceMs':result['inferenceMs'],'finiteWavChecked':True,'rms':rms})
+        rows.append({'roundTripSeconds':elapsed,'inferenceMs':result['inferenceMs'],'finiteWavChecked':True,'rms':rms,**({'diagnostics':result['diagnostics']} if isinstance(result.get('diagnostics'),dict) else {})})
 warm=rows[1] if len(rows)>1 else None
 report={'status':'success','requests':len(rows),'automaticRetries':0,'results':rows,'warmSupports1xPlanningGate':warm['roundTripSeconds']<3.75 if warm else None,'warmSupports2xPlanningGate':warm['roundTripSeconds']<1.875 if warm else None,'note':'Planning gates only; sustained real replay and physical iPad acceptance still required'}
 Path(args.report).write_text(json.dumps(report,indent=2),encoding='utf-8');print(json.dumps(report),flush=True)

@@ -7,6 +7,7 @@ import io
 import json
 import math
 import os
+import secrets
 import subprocess
 import threading
 import time
@@ -57,6 +58,8 @@ def create_app(engine_factory=None, token=None):
         raise RuntimeError('CE_MOSS_TOKEN must contain at least 32 characters')
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     lock, cache, engine = threading.Lock(), OrderedDict(), None
+    diagnostics = os.environ.get('CE_MOSS_DIAGNOSTICS') == '1'
+    instance_id, invocations = secrets.token_hex(8), 0
 
     @app.post('/enhance')
     async def endpoint(request: Request):
@@ -78,21 +81,31 @@ def create_app(engine_factory=None, token=None):
             raise HTTPException(400, str(e) if isinstance(e, ValueError) else '请求格式无效') from None
         # Inference is bounded and serial. A duplicate gets the same cached output.
         def process():
-            nonlocal engine
+            nonlocal engine, invocations
             if not lock.acquire(blocking=False):
                 raise HTTPException(429, '降噪服务忙，请稍后重新开启')
             try:
+                invocations += 1
                 if key in cache:
                     cache.move_to_end(key)
-                    return cache[key]
+                    result = cache[key]
+                    if diagnostics:
+                        return {**result, 'diagnostics': {**result.get('diagnostics', {}),
+                                'instanceId': instance_id, 'invocationIndex': invocations, 'cacheHit': True}}
+                    return result
+                decoded_at = time.perf_counter()
                 pcm = decode(audio)
+                decoded_ms = round((time.perf_counter() - decoded_at) * 1000, 2)
                 first, count = round(trim * RATE), round(duration * RATE)
                 if first + count > len(pcm) + 2:
                     raise ValueError('音频分段未覆盖所需时间')
-                if engine is None:
+                cold = engine is None
+                init_at = time.perf_counter()
+                if cold:
                     engine = engine_factory() if engine_factory else MossEngine(os.environ['CE_MOSS_MODEL'], require_gpu=os.environ.get('CE_MOSS_CPU_TEST') != '1')
+                init_ms = round((time.perf_counter() - init_at) * 1000, 2)
                 began = time.perf_counter()
-                out, _ = engine.enhance(pcm)
+                out, block_times = engine.enhance(pcm)
                 out = out[first:first + count]
                 if len(out) < count:
                     out = np.pad(out, (0, count - len(out)))
@@ -108,6 +121,11 @@ def create_app(engine_factory=None, token=None):
                           'trimSeconds': trim, 'duration': count / RATE, 'sampleRate': RATE, 'samples': count,
                           'pcmScale': 4, 'sha256': hashlib.sha256(data).hexdigest(),
                           'data': base64.b64encode(data).decode(), 'inferenceMs': round((time.perf_counter() - began) * 1000)}
+                if diagnostics:
+                    result['diagnostics'] = {'instanceId': instance_id, 'invocationIndex': invocations,
+                        'cacheHit': False, 'coldModel': cold, 'decodeMs': decoded_ms, 'modelInitMs': init_ms,
+                        'blockMs': [round(value * 1000, 2) for value in block_times],
+                        **getattr(engine, 'diagnostics', lambda: {})()}
                 cache[key] = result
                 while len(cache) > 24:
                     cache.popitem(last=False)

@@ -1,5 +1,7 @@
 """Bounded FP32 MossFormerGAN processing; no downloads or networking at runtime."""
 import hashlib
+import json
+import os
 import time
 from pathlib import Path
 import numpy as np
@@ -19,6 +21,11 @@ class MossEngine:
         options = ort.SessionOptions()
         options.intra_op_num_threads = 4
         options.inter_op_num_threads = 1
+        self._profiled = os.environ.get('CE_MOSS_DIAGNOSTICS') == '1'
+        self._diagnostics = None
+        if self._profiled:
+            options.enable_profiling = True
+            options.profile_file_prefix = '/tmp/ce-moss-ort'
         providers = [('CUDAExecutionProvider', {'use_tf32': '0', 'gpu_mem_limit': str(4 * 1024**3), 'arena_extend_strategy': 'kSameAsRequested'})] if require_gpu else ['CPUExecutionProvider']
         self.session = ort.InferenceSession(str(model_path), sess_options=options, providers=providers)
         if require_gpu and self.session.get_providers()[0] != 'CUDAExecutionProvider':
@@ -27,6 +34,39 @@ class MossEngine:
 
     def enhance(self, audio):
         return enhance(self.session, audio)
+
+    def diagnostics(self):
+        """Private, opt-in operator totals; never return tensors or raw profiles."""
+        if self._diagnostics is not None:
+            return self._diagnostics
+        self._diagnostics = {'provider': self.provider}
+        if not self._profiled:
+            return self._diagnostics
+        path = Path(self.session.end_profiling()).resolve()
+        if path.parent != Path('/tmp') or not path.name.startswith('ce-moss-ort'):
+            return self._diagnostics
+        try:
+            if path.stat().st_size > 32 * 1024**2:
+                return self._diagnostics
+            rows, providers = {}, {}
+            for event in json.loads(path.read_text(encoding='utf-8')):
+                args = event.get('args', {})
+                if event.get('cat') != 'Node' or not isinstance(args.get('provider'), str):
+                    continue
+                provider, op = args['provider'], str(args.get('op_name', 'unknown'))
+                duration = max(0, float(event.get('dur', 0))) / 1000
+                providers[provider] = providers.get(provider, 0) + duration
+                key = (provider, op)
+                total, count = rows.get(key, (0, 0))
+                rows[key] = (total + duration, count + 1)
+            self._diagnostics.update(providerMs={k: round(v, 2) for k, v in providers.items()},
+                topOperators=[{'provider': key[0], 'op': key[1], 'ms': round(value[0], 2), 'calls': value[1]}
+                              for key, value in sorted(rows.items(), key=lambda item: -item[1][0])[:12]])
+        except (OSError, ValueError, TypeError):
+            self._diagnostics['profileAvailable'] = False
+        finally:
+            path.unlink(missing_ok=True)
+        return self._diagnostics
 
 
 def enhance(session, audio):
