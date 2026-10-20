@@ -74,15 +74,165 @@ jobs:
           name: moss-tencent-image-readiness
           path: /tmp/moss-image-readiness.json
           retention-days: 14
-      - name: Export verified OCI archive for a different transfer route
+      - name: Split verified OCI archive for resumable local transfer
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        run: |
+          mkdir /tmp/moss-parts
+          python - <<'PYCODE'
+          import hashlib,json,pathlib
+          root=pathlib.Path('/tmp/moss-parts');rows=[]
+          with open('/tmp/moss-image.tar','rb') as source:
+              while data:=source.read(128*1024**2):
+                  name=f'part-{len(rows):03d}'
+                  (root/name).write_bytes(data)
+                  rows.append(dict(name=name,bytes=len(data),sha256=hashlib.sha256(data).hexdigest()))
+          assert 0<len(rows)<=17, 'Revisit the bounded archive part count'
+          (root/'parts.json').write_text(json.dumps(rows,indent=2))
+          PYCODE
+      - name: Export archive part checksums
         if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
         uses: actions/upload-artifact@v4
         with:
-          name: moss-oci-transport
-          path: /tmp/moss-image.tar
-          compression-level: 0
-          retention-days: 1
+          name: moss-oci-metadata
+          path: /tmp/moss-parts/parts.json
+          retention-days: 3
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-000
+          path: /tmp/moss-parts/part-000
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-001
+          path: /tmp/moss-parts/part-001
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-002
+          path: /tmp/moss-parts/part-002
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-003
+          path: /tmp/moss-parts/part-003
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-004
+          path: /tmp/moss-parts/part-004
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-005
+          path: /tmp/moss-parts/part-005
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-006
+          path: /tmp/moss-parts/part-006
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-007
+          path: /tmp/moss-parts/part-007
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-008
+          path: /tmp/moss-parts/part-008
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-009
+          path: /tmp/moss-parts/part-009
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-010
+          path: /tmp/moss-parts/part-010
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-011
+          path: /tmp/moss-parts/part-011
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-012
+          path: /tmp/moss-parts/part-012
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-013
+          path: /tmp/moss-parts/part-013
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-014
+          path: /tmp/moss-parts/part-014
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-015
+          path: /tmp/moss-parts/part-015
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.export_oci }}
+        with:
+          name: moss-oci-part-016
+          path: /tmp/moss-parts/part-016
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: ignore
       - name: Push pinned image without deploying or invoking a GPU
         if: ${{ success() && github.event_name == 'workflow_dispatch' && vars.CE_TCR_IMAGE != '' && !inputs.readiness_only }}
         timeout-minutes: 120
