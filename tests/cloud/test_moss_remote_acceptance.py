@@ -28,8 +28,8 @@ class RemoteAcceptanceFailureTest(unittest.TestCase):
                 client.assert_not_called()
 
     def test_resource_failure_is_reported_once_without_credentials(self):
-        for rounds in (1, 2):
-            with self.subTest(rounds=rounds), tempfile.TemporaryDirectory() as temp:
+        for rounds, status, envelope in ((1, 449, 'platform'), (2, 449, 'platform'), (1, 503, 'detail')):
+            with self.subTest(rounds=rounds, envelope=envelope), tempfile.TemporaryDirectory() as temp:
                 source = Path(temp) / 'clip.m4a'
                 source.write_bytes(b'private-test-audio' * 4)
                 report = Path(temp) / 'result.json'
@@ -47,12 +47,15 @@ class RemoteAcceptanceFailureTest(unittest.TestCase):
 
                     def post(self, url, **kwargs):
                         calls.append(url)
-                        return httpx.Response(449, json={'Response': {
+                        response = {'Response': {
                             'Error': {'Code': 'InsufficientResources',
                                       'Message': 'No GPU; private-token-' * 4},
                             'RequestId': 'support-request-123',
                             'untrusted': kwargs['content'].decode(),
-                        }})
+                        }}
+                        if envelope == 'detail':
+                            response = {'detail': response['Response']['Error']}
+                        return httpx.Response(status, json=response)
 
                 environment = {'CE_MOSS_URL': 'https://private.example/enhance',
                                'CE_MOSS_TOKEN': 'private-token-' * 4}
@@ -66,8 +69,10 @@ class RemoteAcceptanceFailureTest(unittest.TestCase):
                 result = json.loads(raw)
                 self.assertEqual(result['requests'], 1)
                 self.assertEqual(result['maximumRequests'], rounds)
-                self.assertEqual(result['httpStatus'], 449)
-                self.assertEqual(result['diagnostic']['RequestId'], 'support-request-123')
+                self.assertEqual(result['httpStatus'], status)
+                self.assertEqual(result['diagnostic']['Code'], 'InsufficientResources')
+                if envelope == 'platform':
+                    self.assertEqual(result['diagnostic']['RequestId'], 'support-request-123')
                 self.assertNotIn(environment['CE_MOSS_TOKEN'], raw)
                 self.assertNotIn('untrusted', raw)
                 self.assertNotIn('private-test-audio', raw)

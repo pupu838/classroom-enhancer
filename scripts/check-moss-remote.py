@@ -61,7 +61,7 @@ with httpx.Client(timeout=55,follow_redirects=False) as client:
                 if isinstance(document,dict):
                     platform=document.get('Response',document)
                     if isinstance(platform,dict):
-                        failure=platform.get('Error',platform.get('error',platform))
+                        failure=platform.get('Error',platform.get('error',platform.get('detail',platform)))
                         if isinstance(failure,dict):
                             for field in ('Code','Message','code','message'):
                                 if isinstance(failure.get(field),str):diagnostic[field]=failure[field][:1500]

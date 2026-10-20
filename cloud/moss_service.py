@@ -140,6 +140,17 @@ def create_app(engine_factory=None, token=None):
             raise
         except ValueError as e:
             raise HTTPException(422, str(e)) from None
-        except Exception:
+        except Exception as e:
+            if diagnostics:
+                # Only the authenticated private diagnostic deployment exposes
+                # bounded runtime text. No traceback or environment dump.
+                message = str(e)
+                secrets_to_remove = [token, *(value for key, value in os.environ.items()
+                    if key.startswith('CE_MOSS_') and any(part in key for part in ('SECRET', 'TOKEN')))]
+                for secret in secrets_to_remove:
+                    if secret:
+                        message = message.replace(secret, '[redacted]')
+                raise HTTPException(503, {'Code': 'MossProcessingFailed',
+                    'Message': (type(e).__name__ + ': ' + message)[:1800]}) from None
             raise HTTPException(503, '云端降噪暂不可用，原声可继续播放') from None
     return app

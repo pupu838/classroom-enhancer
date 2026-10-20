@@ -98,5 +98,26 @@ class ServiceTest(unittest.TestCase):
         y, times = enhance(Pass(), np.zeros(500, dtype=np.float32))
         self.assertTrue(np.all(y == 0)); self.assertEqual(times, [])
 
+    def test_private_runtime_failure_is_bounded_and_redacts_secrets(self):
+        class Failing:
+            def enhance(self, pcm):
+                raise RuntimeError('CUDA kernel failed ' + 'test-only-' * 5 + ' secret-session-token ' + 'x' * 3000)
+        for enabled in (False, True):
+            with self.subTest(diagnostics=enabled), patch.dict(os.environ, {
+                    'CE_MOSS_DIAGNOSTICS': '1' if enabled else '0',
+                    'CE_MOSS_SCF_SESSION_TOKEN': 'secret-session-token'}):
+                client = TestClient(create_app(lambda: Failing(), token='test-only-' * 5))
+                response = client.post('/enhance', json=self.body, headers=self.headers)
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn('test-only-', response.text)
+            self.assertNotIn('secret-session-token', response.text)
+            if enabled:
+                detail = response.json()['detail']
+                self.assertEqual(detail['Code'], 'MossProcessingFailed')
+                self.assertIn('CUDA kernel failed', detail['Message'])
+                self.assertLessEqual(len(detail['Message']), 1800)
+            else:
+                self.assertNotIn('CUDA kernel failed', response.text)
+
 
 if __name__ == '__main__': unittest.main()

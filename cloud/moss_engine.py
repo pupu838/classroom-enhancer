@@ -30,16 +30,24 @@ class MossEngine:
         self.session = ort.InferenceSession(str(model_path), sess_options=options, providers=providers)
         if require_gpu and self.session.get_providers()[0] != 'CUDAExecutionProvider':
             raise RuntimeError('GPU 初始化失败')
+        self._require_gpu = require_gpu
+        if require_gpu:
+            # ORT otherwise retries an EPFail by recreating a CPU-only session.
+            # A registered CUDA provider therefore does not prove GPU execution.
+            self.session.disable_fallback()
         self.provider = self.session.get_providers()[0]
 
     def enhance(self, audio):
-        return enhance(self.session, audio)
+        result = enhance(self.session, audio)
+        if self._require_gpu and self.session.get_providers()[0] != 'CUDAExecutionProvider':
+            raise RuntimeError('GPU 执行失败，已阻止 CPU 替代计算')
+        return result
 
     def diagnostics(self):
         """Private, opt-in operator totals; never return tensors or raw profiles."""
         if self._diagnostics is not None:
             return self._diagnostics
-        self._diagnostics = {'provider': self.provider}
+        self._diagnostics = {'provider': self.provider, 'activeProviders': self.session.get_providers()}
         if not self._profiled:
             return self._diagnostics
         path = Path(self.session.end_profiling()).resolve()
