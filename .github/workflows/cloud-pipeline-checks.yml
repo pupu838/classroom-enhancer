@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: pip install fastapi==0.115.12 httpx==0.28.1 pytest==8.3.5 numpy==2.2.5
+      - run: pip install fastapi==0.115.12 httpx==0.28.1 pytest==8.3.5 numpy==2.2.5 onnx==1.17.0
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm install --ignore-scripts
       - run: python build.py && npm run build:connector

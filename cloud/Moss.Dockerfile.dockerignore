@@ -7,6 +7,7 @@
 !cloud/moss-requirements.txt
 !cloud/moss_engine.py
 !cloud/moss_service.py
+!cloud/moss_cuda_model.py
 !portal/
 !portal/tablet/
 !portal/tablet/vendor/

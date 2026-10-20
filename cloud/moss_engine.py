@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 MODEL_SHA256 = '708b725800ee43542f64c2a00a7a00289411385aecec75e8fc2295ea596be422'
+CUDA_MODEL_SHA256 = '4c4a316a0cdf4c7871f8ae05a2e6c7c826e7e2fc344db69922902e1adee9957f'
 MODEL_ID = 'moss-se16k-fp32-v1'
 RATE, N, H, FRAMES, OVERLAP = 16000, 400, 100, 401, 80
 
@@ -14,13 +15,18 @@ RATE, N, H, FRAMES, OVERLAP = 16000, 400, 100, 401, 80
 class MossEngine:
     def __init__(self, model_path, require_gpu=True):
         import onnxruntime as ort
-        if hashlib.sha256(Path(model_path).read_bytes()).hexdigest() != MODEL_SHA256:
+        self.model_sha256 = hashlib.sha256(Path(model_path).read_bytes()).hexdigest()
+        if self.model_sha256 not in (MODEL_SHA256, CUDA_MODEL_SHA256):
             raise RuntimeError('模型文件校验失败')
         if require_gpu and 'CUDAExecutionProvider' not in ort.get_available_providers():
             raise RuntimeError('GPU 尚未就绪')
         options = ort.SessionOptions()
         options.intra_op_num_threads = 4
         options.inter_op_num_threads = 1
+        if self.model_sha256 == CUDA_MODEL_SHA256:
+            # Keep the explicit zero padding separate: re-fusing it recreates
+            # the cuDNN 9.8 asymmetric-padding failure this graph avoids.
+            options.add_session_config_entry('optimization.disable_specified_optimizers', 'Pad_Fusion')
         self._profiled = os.environ.get('CE_MOSS_DIAGNOSTICS') == '1'
         self._diagnostics = None
         if self._profiled:
@@ -54,7 +60,8 @@ class MossEngine:
         """Private, opt-in operator totals; never return tensors or raw profiles."""
         if self._diagnostics is not None:
             return self._diagnostics
-        self._diagnostics = {'provider': self.provider, 'activeProviders': self.session.get_providers()}
+        self._diagnostics = {'provider': self.provider, 'activeProviders': self.session.get_providers(),
+                             'modelSha256': self.model_sha256}
         if not self._profiled:
             return self._diagnostics
         path = Path(self.session.end_profiling()).resolve()
