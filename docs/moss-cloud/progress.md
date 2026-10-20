@@ -1,5 +1,7 @@
 # 进度
 
+2026-10-20 10:43：39358672507构建和17分块导出成功。普通gh下载先拿到数块后再次失败；未丢弃已校验文件。补充两个后段预取会话98232已结束，私有工具最多2路，无GPU。实测GitHub工件最终HTTPS主机 productionresultssa3.blob.core.windows.net 支持206与Content-Range，于是用4MiB Range逐段写入.partial、精确验证偏移/总长、固定受信主机、每段最多4次失败、解ZIP只读匹配文件名并验证SHA。本机resume-download.py会话73771正在补取缺失分块；state路径不变。用户API令牌只在进程内用于GitHub API，从不转发到Blob，不输出签名URL。此时已存在10块约1.24GB但主进度遍历尚未完成，不能称为整包入库；GPU0次。
+
 2026-10-20 10:24：用户告知腾讯已批准。已刷新工单核实工程师于10月19日10:50回复“已经为您调整了”，工单待确认结单；未点击结单或评价。按用户已批准试跑范围继续，无需重复预算确认。
 
 此前本机helper 39135156719于10月18日14:24UTC以RuntimeError失败，目录仅state.json、没有归档；原OCI工件保留1天，现已到期不可下载。小体积readiness工件今日gh下载成功，长包失败具体原因未留存，不声称只是网络问题。改为17个独立128MiB分块工件、每块SHA/大小验证、最多3次重取，保留3天；合并后仍由OCI上传器逐层校验。03f76f3工作流语法与分块设置通过，显式导出任务39358672507正在构建，readiness_only=true无TCR直传或GPU调用。本机helper exec25101等待该构建，state路径 work/moss-cloud/transfer-39358672507/state.json。
