@@ -15,7 +15,7 @@ import wave
 from urllib.parse import urlparse
 import httpx
 
-p=argparse.ArgumentParser();p.add_argument('aac',help='a previously prepared eight-second AAC MP4 window');p.add_argument('report');p.add_argument('--audio-dir',help='optional private directory for the returned WAV clips');p.add_argument('--rounds',type=int,choices=(1,2),default=2,help='maximum requests; stops at the first failure');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('aac',help='a previously prepared eight-second AAC MP4 window');p.add_argument('report');p.add_argument('--audio-dir',help='optional private directory for the returned WAV clips');p.add_argument('--rounds',type=int,choices=(1,2),default=2,help='maximum requests; stops at the first failure');p.add_argument('--first-trim-seconds',type=float,choices=(.5,1.),default=.5,help='choose a distinct trim for a single uncached warm check');args=p.parse_args()
 # An operator can freeze all local acceptance calls while checking the bill.
 # Check before credentials, audio reads, or constructing any HTTP client. The
 # marker is ignored by Git and never becomes a production configuration.
@@ -48,7 +48,7 @@ def request_headers(payload):
     return result
 
 with httpx.Client(timeout=55,follow_redirects=False) as client:
-    for trim in (.5,1.0)[:args.rounds]:
+    for trim in (args.first_trim_seconds, 1.0 if args.first_trim_seconds == .5 else .5)[:args.rounds]:
         payload=json.dumps({**body,'trimSeconds':trim},separators=(',',':'))
         began=time.perf_counter()
         response=client.post(url,headers=request_headers(payload),content=payload.encode())
@@ -92,7 +92,7 @@ with httpx.Client(timeout=55,follow_redirects=False) as client:
         if args.audio_dir:
             destination=Path(args.audio_dir);destination.mkdir(parents=True,exist_ok=True)
             (destination/f'moss-round-{len(rows)+1}.wav').write_bytes(data)
-        rows.append({'roundTripSeconds':elapsed,'inferenceMs':result['inferenceMs'],'finiteWavChecked':True,'rms':rms,**({'diagnostics':result['diagnostics']} if isinstance(result.get('diagnostics'),dict) else {})})
+        rows.append({'roundTripSeconds':elapsed,'trimSeconds':trim,'inferenceMs':result['inferenceMs'],'finiteWavChecked':True,'rms':rms,**({'diagnostics':result['diagnostics']} if isinstance(result.get('diagnostics'),dict) else {})})
 warm=rows[1] if len(rows)>1 else None
 report={'status':'success','requests':len(rows),'automaticRetries':0,'results':rows,'warmSupports1xPlanningGate':warm['roundTripSeconds']<3.75 if warm else None,'warmSupports2xPlanningGate':warm['roundTripSeconds']<1.875 if warm else None,'note':'Planning gates only; sustained real replay and physical iPad acceptance still required'}
 Path(args.report).write_text(json.dumps(report,indent=2),encoding='utf-8');print(json.dumps(report),flush=True)
