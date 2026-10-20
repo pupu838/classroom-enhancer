@@ -1,5 +1,11 @@
 # 进度
 
+2026-10-20 10:24：用户告知腾讯已批准。已刷新工单核实工程师于10月19日10:50回复“已经为您调整了”，工单待确认结单；未点击结单或评价。按用户已批准试跑范围继续，无需重复预算确认。
+
+此前本机helper 39135156719于10月18日14:24UTC以RuntimeError失败，目录仅state.json、没有归档；原OCI工件保留1天，现已到期不可下载。小体积readiness工件今日gh下载成功，长包失败具体原因未留存，不声称只是网络问题。改为17个独立128MiB分块工件、每块SHA/大小验证、最多3次重取，保留3天；合并后仍由OCI上传器逐层校验。03f76f3工作流语法与分块设置通过，显式导出任务39358672507正在构建，readiness_only=true无TCR直传或GPU调用。本机helper exec25101等待该构建，state路径 work/moss-cloud/transfer-39358672507/state.json。
+
+广州SCF草稿仍保持GN7vw.LARGE16/60秒初始化与执行/0.5GB临时存储/CAM URL/单并发16384MB/私有应用口令，尚未选入镜像或提交创建。GPU仍0次。生产0.9.2与候选未发布状态保持。
+
 2026-10-18 22:15：用户再次问进度。实查39125781356已失败，完整层仍未入库；日志出现连续WriteTimeout，并达到120分钟上传步骤期限，不再称作“正在上传”。工单最新工程师回复21:18仍在加急后端核查，尚未批准额度。没有追加任何对外回复、催单或启动GPU。
 
 更换传输路径：b225ef9新增仅显式manual export_oci=true时上传公开源码OCI工件（不含.env/录音；保留1天），readiness_only=true确保不再走GitHub到TCR直传。导出任务39135156719正在构建。已启动本机私有helper work/moss-cloud/local-transfer.py（exec会话34330），自动等构建通过→gh下载OCI→用已验证本机链路上传私有TCR，步骤上限分别20/60/90分钟，不创建或调用GPU。状态文件 work/moss-cloud/transfer-39135156719/state.json；成功报告 outputs/腾讯云本机中转上传验证.json。此时state=waiting-build，不代表已入库。E盘可用约95GB，归档预计2.2GB，不启用Docker Desktop、不再索取CloudShell MFA。
