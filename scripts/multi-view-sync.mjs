@@ -84,5 +84,5 @@ export function createMultiViewSync({clock,clockId,views,onState=()=>{},interval
   listen(view.video,'error',()=>{blocked.add(view.id);state(view.id,'error');});
  }
  const timer=setInterval(()=>sync(),interval);
- return {setVisible(ids){const next=new Set(ids);for(const id of next)if(!selected.has(id))needsAlign.add(id);selected=next;blocked.clear();sync();},sync,destroy(){disposed=true;clearInterval(timer);clean.forEach(fn=>fn());pauseOthers();},getVisible:()=>[...selected],isConserving:()=>conserving};
+ return {setVisible(ids){const next=new Set(ids),changed=next.size!==selected.size||[...next].some(id=>!selected.has(id));if(changed)for(const id of next)needsAlign.add(id);selected=next;blocked.clear();sync();},sync,destroy(){disposed=true;clearInterval(timer);clean.forEach(fn=>fn());pauseOthers();},getVisible:()=>[...selected],isConserving:()=>conserving};
 }
