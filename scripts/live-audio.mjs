@@ -18,13 +18,13 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   bus.connect(tap);bus.connect(dry);dry.connect(output);output.connect(meter);meter.connect(ctx.destination);
   // Create all three elements inside the initiating gesture; metadata is cheap,
   // and only the selected track is played until a switch is requested.
-  for(const view of views){const a=new Audio();a.crossOrigin='anonymous';a.preload='metadata';a.playsInline=true;a.src=view.url;a.preservesPitch=true;
+  for(const view of views){const a=new Audio();a.crossOrigin='anonymous';a.preload='none';a.playsInline=true;a.preservesPitch=true;
    const source=ctx.createMediaElementSource(a),level=ctx.createGain();level.gain.value=0;source.connect(level);level.connect(bus);
    const track={view,a,source,level};tracks.set(view.id,track);
    listen(a,'error',()=>{if(active===track)fallback('这路音频加载失败，已恢复学校原声。');});
   }
  }
- function ready(a){return new Promise((resolve,reject)=>{if(a.readyState>=2&&!a.seeking){resolve();return;}const timer=setTimeout(()=>done(Error('所选音轨仍在缓冲，当前声音继续播放，请稍后重试')),20000);function done(e){clearTimeout(timer);for(const name of ['canplay','seeked'])a.removeEventListener(name,check);a.removeEventListener('error',fail);e?reject(e):resolve();}function check(){if(a.readyState>=2&&!a.seeking)done();}function fail(){done(Error('学校媒体暂不允许这路音轨在浏览器处理'));}for(const name of ['canplay','seeked'])a.addEventListener(name,check);a.addEventListener('error',fail);});}
+ function ready(a){return new Promise((resolve,reject)=>{if(a.readyState>=3&&!a.seeking){resolve();return;}const timer=setTimeout(()=>done(Error('所选音轨仍在缓冲，当前声音继续播放，请稍后重试')),20000);function done(e){clearTimeout(timer);for(const name of ['canplay','seeked'])a.removeEventListener(name,check);a.removeEventListener('error',fail);e?reject(e):resolve();}function check(){if(a.readyState>=3&&!a.seeking)done();}function fail(){done(Error('学校媒体暂不允许这路音轨在浏览器处理'));}for(const name of ['canplay','seeked'])a.addEventListener(name,check);a.addEventListener('error',fail);});}
  function align(track,force=false){
   const a=track.a,target=targetTime(track),drift=target-a.currentTime,now=performance.now();
   // Avoid re-seeking an unbuffered stream: on Safari every seek can abandon
@@ -48,7 +48,7 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
    return;
   }
   wanted=id;const ticket=++serial;init();const track=tracks.get(id),a=track.a;
-  ctx.resume().catch(()=>{});if(a.readyState<2){a.preload='auto';a.load();} // Keep activation before the first await.
+  ctx.resume().catch(()=>{});if(!a.src)a.src=track.view.url;if(a.readyState<3){a.preload='auto';a.load();} // Keep activation before the first await.
   const playing=!clock.paused;const play=playing||active!==track?a.play():null;play?.catch(()=>{});
   try{await ready(a);if(ticket!==serial||disposed)return;const began=performance.now();align(track,true);await ready(a);
    // Seeking a remote MP4 takes time while the clock continues. Predict that
