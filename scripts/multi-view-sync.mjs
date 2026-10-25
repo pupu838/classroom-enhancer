@@ -25,10 +25,9 @@ export function createMultiViewSync({clock,clockId,views,onState=()=>{},interval
   // Hysteresis: do not repeatedly start/stop secondary streams at the
   // threshold. Unknown buffered ranges recover after stable playback.
   if(ahead!==null&&ahead>=8){conserving=false;stableSince=0;return false;}
-  if(ahead===null){
-   if(!stableSince)stableSince=now;
-   if(now-stableSince>=3000){conserving=false;stableSince=0;return false;}
-  }
+  // In browsers without readable TimeRanges, the 'playing' event and
+  // HAVE_FUTURE_DATA are the only available recovery evidence.
+  if(ahead===null){conserving=false;stableSince=0;return false;}
   return true;
  }
  function sync(force=false){
