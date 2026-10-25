@@ -25,10 +25,29 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   }
  }
  function ready(a){return new Promise((resolve,reject)=>{if(a.readyState>=2&&!a.seeking){resolve();return;}const timer=setTimeout(()=>done(Error('所选音轨仍在缓冲，当前声音继续播放，请稍后重试')),20000);function done(e){clearTimeout(timer);for(const name of ['canplay','seeked'])a.removeEventListener(name,check);a.removeEventListener('error',fail);e?reject(e):resolve();}function check(){if(a.readyState>=2&&!a.seeking)done();}function fail(){done(Error('学校媒体暂不允许这路音轨在浏览器处理'));}for(const name of ['canplay','seeked'])a.addEventListener(name,check);a.addEventListener('error',fail);});}
- function align(track,force=false){const a=track.a,target=targetTime(track),drift=target-a.currentTime,now=performance.now();if(!a.seeking&&(force||Math.abs(drift)>.8&&now-lastSeek>2500)&&Math.abs(drift)>.05){a.currentTime=target;lastSeek=now;a.playbackRate=clock.playbackRate;return;}a.playbackRate=clock.playbackRate*(1+(!a.seeking&&Math.abs(drift)>.1?Math.max(-.015,Math.min(.015,drift*.05)):0));}
- function fallback(message){if(disposed)return;serial++;started=false;enhanced=false;worklet?.port.postMessage({type:'bypass',value:true});for(const t of tracks.values()){t.level.gain.value=0;t.a.pause();}active=null;clock.muted=muted;clock.volume=volume;onStatus(message);emit();}
- async function select(id=wanted){
-  if(disposed)throw Error('播放器已关闭');if(!views.some(v=>v.id===id))throw Error('没有这路音频');wanted=id;const ticket=++serial;init();const track=tracks.get(id),a=track.a;
+ function align(track,force=false){
+  const a=track.a,target=targetTime(track),drift=target-a.currentTime,now=performance.now();
+  // Avoid re-seeking an unbuffered stream: on Safari every seek can abandon
+  // in-flight MP4 range requests and make audible stuttering worse.
+  if(!force&&(a.seeking||a.readyState<3))return;
+  if(!a.seeking&&(force||Math.abs(drift)>.8&&now-lastSeek>2500)&&Math.abs(drift)>.05){
+   a.currentTime=target;lastSeek=now;a.playbackRate=clock.playbackRate;return;
+  }
+  const correction=!a.seeking&&Math.abs(drift)>.1?Math.max(-.015,Math.min(.015,drift*.05)):0;
+  const rate=clock.playbackRate*(1+correction);
+  if(Math.abs(a.playbackRate-rate)>.0001)a.playbackRate=rate;
+ }
+ function fallback(message){if(disposed)return;serial++;started=false;enhanced=false;wanted=clockId;worklet?.port.postMessage({type:'bypass',value:true});for(const t of tracks.values()){t.level.gain.value=0;t.a.pause();}active=null;clock.muted=muted;clock.volume=volume;onStatus(message);emit();}
+ async function select(id=wanted,{forceExternal=false}={}){
+  if(disposed)throw Error('播放器已关闭');if(!views.some(v=>v.id===id))throw Error('没有这路音频');
+  // The master video already contains this audio. Do not stream the same MP4
+  // twice when the user chooses unprocessed master-track sound.
+  if(id===clockId&&!enhanced&&!forceExternal){
+   wanted=clockId;if(started)fallback('已切回主音轨直放，无需重复下载音频。');
+   else{serial++;onStatus('正在使用主音轨直放，优先保证声音连续。');emit();}
+   return;
+  }
+  wanted=id;const ticket=++serial;init();const track=tracks.get(id),a=track.a;
   ctx.resume().catch(()=>{});if(a.readyState<2){a.preload='auto';a.load();} // Keep activation before the first await.
   const playing=!clock.paused;const play=playing||active!==track?a.play():null;play?.catch(()=>{});
   try{await ready(a);if(ticket!==serial||disposed)return;const began=performance.now();align(track,true);await ready(a);
@@ -55,8 +74,13 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
    boost=ctx.createGain();bus.connect(worklet);worklet.connect(hp);hp.connect(lp);lp.connect(bass);bass.connect(body);body.connect(presence);presence.connect(treble);treble.connect(boost);boost.connect(limiter);limiter.connect(wet);wet.connect(output);updateGain();
   })().finally(()=>preparing=null);return preparing;
  }
- async function setEnhanced(value){if(!value){enhanced=false;worklet?.port.postMessage({type:'bypass',value:true});updateGain();onStatus('已关闭降噪，继续播放所选音轨原声。');emit();return;}if(!started)await select(wanted);if(!worklet)onStatus('正在加载小型降噪模块，当前音轨原声继续播放…');await effects();if(disposed)return;enhanced=true;worklet?.port.postMessage({type:'bypass',value:false});updateGain();onStatus(worklet?.neural?'已开启 RNNoise 降噪试验；不保证提高课堂人声清晰度，可随时关闭对比原声。':'浏览器人声增强已开启，可在无人讲话时采样底噪。');emit();}
- function sync(force=false){if(!started||!active||disposed)return;align(active,force);if(clock.paused||clock.seeking||buffering){active.a.pause();stalledAt=0;return;}if(active.a.paused)active.a.play().catch(()=>fallback('浏览器暂停了音频，请重新选择这路音频继续。'));const now=performance.now();if(!active.a.seeking&&active.a.currentTime===previousTime){if(!stalledAt)stalledAt=now;else if(now-stalledAt>3500)fallback('所选音轨缓冲停顿，已恢复学校主音轨原声；可稍后切换重试。');}else stalledAt=0;previousTime=active.a.currentTime;}
+ async function setEnhanced(value){if(!value){
+   enhanced=false;worklet?.port.postMessage({type:'bypass',value:true});
+   if(active?.view.id===clockId)fallback('已关闭增强，恢复主音轨直放，减少重复下载。');
+   else{updateGain();onStatus('已关闭降噪，继续播放所选音轨原声。');emit();}
+   return;
+  }if(!started)await select(wanted,{forceExternal:true});if(!worklet)onStatus('正在加载小型降噪模块，当前音轨原声继续播放…');await effects();if(disposed)return;enhanced=true;worklet?.port.postMessage({type:'bypass',value:false});updateGain();onStatus(worklet?.neural?'已开启 RNNoise 降噪试验；不保证提高课堂人声清晰度，可随时关闭对比原声。':'浏览器人声增强已开启，可在无人讲话时采样底噪。');emit();}
+ function sync(force=false){if(!started||!active||disposed)return;align(active,force);if(clock.paused||clock.seeking||buffering){active.a.pause();stalledAt=0;return;}if(active.a.paused)active.a.play().catch(()=>fallback('浏览器暂停了音频，请重新选择这路音频继续。'));const now=performance.now();if(!active.a.seeking&&active.a.currentTime===previousTime){if(!stalledAt)stalledAt=now;else if(now-stalledAt>2000)fallback('独立音轨连续停顿，已恢复主音轨直放；可降低倍速或减少同时播放的画面。');}else stalledAt=0;previousTime=active.a.currentTime;}
  for(const event of ['play','playing','seeked','ratechange'])listen(clock,event,()=>{if(event==='playing'||event==='seeked')buffering=false;sync(event==='seeked');});
  for(const event of ['pause','waiting','ended'])listen(clock,event,()=>{if(event==='waiting')buffering=true;if(active)active.a.pause();});
  listen(clock,'seeking',()=>{worklet?.port.postMessage({type:'reset'});if(active){active.a.pause();align(active,true);}window.dispatchEvent(new Event('ce-audio-seek'));});
