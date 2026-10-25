@@ -11,13 +11,13 @@ export function bufferedAhead(video){
 
 export function createMultiViewSync({clock,clockId,views,onState=()=>{},interval=250}){
  let selected=new Set([clockId]),buffering=false,disposed=false,conserving=false,stableSince=0;
- const clean=[],lastSeek=new Map(),pendingPlay=new Set(),blocked=new Set(),states=new Map();
+ const clean=[],lastSeek=new Map(),pendingPlay=new Set(),blocked=new Set(),states=new Map(),needsAlign=new Set();
  const state=(id,value)=>{if(states.get(id)!==value){states.set(id,value);onState(id,value);}};
  const listen=(target,event,handler)=>{target.addEventListener(event,handler);clean.push(()=>target.removeEventListener(event,handler));};
  const baseOffset=views.find(view=>view.id===clockId)?.offset||0;
  function pauseOthers(){for(const view of views)if(view.video!==clock)view.video.pause();}
  function mainNeedsBandwidth(now){
-  if(clock.paused||clock.seeking)return false;
+  if(clock.paused||clock.seeking)return conserving;
   const ahead=bufferedAhead(clock);
   const starved=buffering||clock.readyState<3||(ahead!==null&&ahead<1.5);
   if(starved){conserving=true;stableSince=0;return true;}
@@ -55,10 +55,10 @@ export function createMultiViewSync({clock,clockId,views,onState=()=>{},interval
    const drift=target-v.currentTime;
    // Never seek a stream that has no future media, unless the user explicitly
    // dragged the master timeline. Retries here can discard buffered ranges.
-   const maySeek=force||v.readyState>=3;
-   if(maySeek&&!v.seeking&&Math.abs(drift)>.04&&(force||Math.abs(drift)>1.5&&now-(lastSeek.get(view.id)||0)>4000)){
-    v.currentTime=target;lastSeek.set(view.id,now);
-   }
+   const explicit=force||needsAlign.has(view.id),maySeek=explicit||v.readyState>=3;
+   if(maySeek&&!v.seeking&&Math.abs(drift)>.04&&(explicit||Math.abs(drift)>1.5&&now-(lastSeek.get(view.id)||0)>4000)){
+    v.currentTime=target;lastSeek.set(view.id,now);needsAlign.delete(view.id);
+   }else if(Math.abs(drift)<=.04)needsAlign.delete(view.id);
    if(!v.seeking&&v.readyState>=3){
     const correction=Math.abs(drift)>.12?Math.max(-.035,Math.min(.035,drift*.1)):0;
     const rate=clock.playbackRate*(1+correction);
@@ -84,5 +84,5 @@ export function createMultiViewSync({clock,clockId,views,onState=()=>{},interval
   listen(view.video,'error',()=>{blocked.add(view.id);state(view.id,'error');});
  }
  const timer=setInterval(()=>sync(),interval);
- return {setVisible(ids){selected=new Set(ids);blocked.clear();sync();},sync,destroy(){disposed=true;clearInterval(timer);clean.forEach(fn=>fn());pauseOthers();},getVisible:()=>[...selected],isConserving:()=>conserving};
+ return {setVisible(ids){const next=new Set(ids);for(const id of next)if(!selected.has(id))needsAlign.add(id);selected=next;blocked.clear();sync();},sync,destroy(){disposed=true;clearInterval(timer);clean.forEach(fn=>fn());pauseOthers();},getVisible:()=>[...selected],isConserving:()=>conserving};
 }
