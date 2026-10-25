@@ -2,7 +2,7 @@ import {build} from 'esbuild';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const origin='https://classroom-enhancer-global-5rcwipvd.edgeone.dev';
-const version='0.10.0';
+const version='0.10.1';
 // Keep the installed bridge stable; normal app releases use the runtime manifest.
 const loaderVersion='0.7.0';
 const result=await build({entryPoints:['scripts/school-connector.mjs'],bundle:true,format:'iife',target:'safari16',minify:true,write:false});

@@ -17,6 +17,15 @@ try{
  clock.paused=false;clock.dispatchEvent(new Event('playing'));await Promise.resolve();await Promise.resolve();assert.equal(room.paused,false);
  clock.dispatchEvent(new Event('waiting'));assert.equal(room.paused,true);sync.sync();assert.equal(room.paused,true);
  clock.dispatchEvent(new Event('playing'));await Promise.resolve();await Promise.resolve();assert.equal(room.paused,false);
+ clock.currentTime=100;
+ clock.buffered={length:1,start:()=>0,end:()=>clock.currentTime+.5};
+ sync.setVisible(['room','slides']);sync.sync();assert(sync.isConserving());assert.equal(room.paused,true,'pause helper videos to reserve bandwidth for clock audio');
+ assert(events.some(event=>event.id==='room'&&event.state==='priority'),'indicate audio priority while buffering');
+ clock.buffered={length:1,start:()=>0,end:()=>clock.currentTime+5};
+ sync.sync();assert(sync.isConserving(),'hysteresis must prevent repeated helper rebuffering');
+ clock.buffered={length:1,start:()=>0,end:()=>clock.currentTime+10};
+ sync.sync();await Promise.resolve();await Promise.resolve();assert(!sync.isConserving(),'recover secondary video once master audio has safe lead');
+ delete clock.buffered;
  clock.currentTime=1;sync.sync(true);assert(events.some(event=>event.id==='room'&&event.state==='absent'));
- console.log('PASS three-view timing offsets, angle switch keeps progress, one sound, play/pause/rate/buffering sync, no tiny-drift hard seeks');
+ console.log('PASS three-view timing offsets, angle switch, audio-priority buffering hysteresis, play/pause sync, no tiny-drift hard seeks');
 }finally{sync.destroy();}

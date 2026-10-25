@@ -75,7 +75,7 @@ export async function mountMultiViewPlayer({sources,originalVideos,PlayerClass=A
  const originalInfo=sources.views.find(view=>view.url===(currentOriginal.currentSrc||currentOriginal.src));
  const captionCues=[];try{for(const track of Array.from(currentOriginal.textTracks||[]))for(const cue of Array.from(track.cues||[]))captionCues.push({start:cue.startTime+(originalInfo?.offset||0),end:cue.endTime+(originalInfo?.offset||0),text:cue.text});}catch{}
  const listen=(target,event,handler)=>{target.addEventListener(event,handler);clean.push(()=>target.removeEventListener(event,handler));};
- function showState(id,state){const el=messages.get(id);if(!el)return;el.textContent=({loading:'该路正在缓冲…',blocked:'点一次播放继续此画面',error:'该路暂时无法播放，可切换其他角度',absent:'这个时间段没有该路画面'})[state]||'';el.hidden=!el.textContent;}
+ function showState(id,state){const el=messages.get(id);if(!el)return;el.textContent=({loading:'该路正在缓冲…',priority:'主音轨正在补充缓存，已暂缓这路画面',blocked:'点一次播放继续此画面',error:'该路暂时无法播放，可切换其他角度',absent:'这个时间段没有该路画面'})[state]||'';el.hidden=!el.textContent;}
  function render(){
   const count=selected.length;root.dataset.count=String(count);grid.dataset.count=String(count);
   const result=viewRects(selected,layout,window.innerHeight>window.innerWidth);root.dataset.layout=result.arrangement;stage.style.aspectRatio=String(result.aspect/(layout.height/100));root.classList.toggle('ce-layout-editing',!tools.hidden&&layout.arrangement==='free');
@@ -123,11 +123,11 @@ export async function mountMultiViewPlayer({sources,originalVideos,PlayerClass=A
   onRestore({user,message});
  }
  try{
-  art=new PlayerClass({container:stage,url:primary.url,type:'mp4',theme:'#fb7299',lang:'zh-cn',volume:currentOriginal.volume,autoplay:false,mutex:false,setting:true,playbackRate:true,hotkey:true,fullscreen:false,fullscreenWeb:false,pip:false,playsInline:true,miniProgressBar:true,moreVideoAttr:{preload:'metadata',playsInline:true,'webkit-playsinline':'true'}});
+  art=new PlayerClass({container:stage,url:primary.url,type:'mp4',theme:'#fb7299',lang:'zh-cn',volume:currentOriginal.volume,autoplay:false,mutex:false,setting:true,playbackRate:true,hotkey:true,fullscreen:false,fullscreenWeb:false,pip:false,playsInline:true,miniProgressBar:true,moreVideoAttr:{preload:'auto',playsInline:true,'webkit-playsinline':'true'}});
   grid=document.createElement('div');grid.className='ce-view-grid';art.template.$player.prepend(grid);
   for(const source of sources.views){
    const video=source.id===primary.id?art.video:document.createElement('video');
-   if(video!==art.video){video.src=source.url;video.preload='metadata';video.muted=true;video.playsInline=true;video.setAttribute('webkit-playsinline','true');}
+   if(video!==art.video){video.preload='none';video.src=source.url;video.muted=true;video.playsInline=true;video.setAttribute('webkit-playsinline','true');}
    const cell=document.createElement('div');cell.className='ce-view-cell';cell.dataset.view=source.id;
    const label=document.createElement('span');label.className='ce-angle-label';label.textContent=source.label;
    const message=document.createElement('span');message.className='ce-angle-message';message.hidden=true;
@@ -168,6 +168,8 @@ export async function mountMultiViewPlayer({sources,originalVideos,PlayerClass=A
   const api={container:root,getVideo:()=>art.video,getRect:()=>stage.getBoundingClientRect(),restore:()=>restore(true),dispose:()=>restore(false,'',false),select,setVisible(ids){selected=[...new Set(ids.filter(id=>views.some(view=>view.id===id)))];if(!selected.length)selected=[primary.id];mode.value=selected.length===1?'single':'mix';render();},getCaption(time){const canonical=time+primary.offset;return captionCues.find(cue=>canonical>=cue.start&&canonical<cue.end)?.text||'';},getViews:()=>views,art};
   window.__CE_PLAYER__=api;
   refreshSound();
+  listen(art.video,'waiting',()=>{note.textContent='主视频正在缓冲：已暂停其他画面，优先保证声音连续。';});
+  listen(art.video,'playing',()=>{note.textContent='主视频已恢复播放；其他画面将在缓存充足后自动恢复。';});
   listen(art.video,'error',()=>restore(false,'新播放器读取失败，已恢复学校播放器。'));
   render();if(wasPlaying)art.video.play().catch(()=>{note.textContent='已保留播放进度。点播放器中间的播放按钮继续。';});
   return api;
