@@ -123,7 +123,7 @@ export async function mountMultiViewPlayer({sources,originalVideos,PlayerClass=A
   onRestore({user,message});
  }
  try{
-  art=new PlayerClass({container:stage,url:primary.url,type:'mp4',theme:'#fb7299',lang:'zh-cn',volume:currentOriginal.volume,autoplay:false,mutex:false,setting:true,playbackRate:true,hotkey:true,fullscreen:false,fullscreenWeb:false,pip:false,playsInline:true,miniProgressBar:true,moreVideoAttr:{preload:'metadata',playsInline:true,'webkit-playsinline':'true'}});
+  art=new PlayerClass({container:stage,url:primary.url,type:'mp4',theme:'#fb7299',lang:'zh-cn',volume:currentOriginal.volume,autoplay:false,mutex:false,setting:true,playbackRate:true,hotkey:true,fullscreen:false,fullscreenWeb:false,pip:false,playsInline:true,miniProgressBar:true,moreVideoAttr:{preload:'auto',playsInline:true,'webkit-playsinline':'true'}});
   grid=document.createElement('div');grid.className='ce-view-grid';art.template.$player.prepend(grid);
   for(const source of sources.views){
    const video=source.id===primary.id?art.video:document.createElement('video');
@@ -168,6 +168,8 @@ export async function mountMultiViewPlayer({sources,originalVideos,PlayerClass=A
   const api={container:root,getVideo:()=>art.video,getRect:()=>stage.getBoundingClientRect(),restore:()=>restore(true),dispose:()=>restore(false,'',false),select,setVisible(ids){selected=[...new Set(ids.filter(id=>views.some(view=>view.id===id)))];if(!selected.length)selected=[primary.id];mode.value=selected.length===1?'single':'mix';render();},getCaption(time){const canonical=time+primary.offset;return captionCues.find(cue=>canonical>=cue.start&&canonical<cue.end)?.text||'';},getViews:()=>views,art};
   window.__CE_PLAYER__=api;
   refreshSound();
+  listen(art.video,'waiting',()=>{note.textContent='主视频正在缓冲：已暂停其他画面，优先保证声音连续。';});
+  listen(art.video,'playing',()=>{note.textContent='主视频已恢复播放；其他画面将在缓存充足后自动恢复。';});
   listen(art.video,'error',()=>restore(false,'新播放器读取失败，已恢复学校播放器。'));
   render();if(wasPlaying)art.video.play().catch(()=>{note.textContent='已保留播放进度。点播放器中间的播放按钮继续。';});
   return api;
