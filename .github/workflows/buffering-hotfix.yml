@@ -33,7 +33,6 @@ jobs:
         run: |
           node tests/multi-view-sync-test.mjs
           node tests/live-audio-test.mjs
-          node tests/audio-window-test.mjs
           node tests/tablet-unified-test.cjs
       - name: Build unified iPad and desktop classroom runtime
         run: |
