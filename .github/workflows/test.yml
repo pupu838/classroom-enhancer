@@ -21,6 +21,10 @@ jobs:
       - run: python build.py
       - run: git diff --exit-code -- edge manifest.json Classroom_Enhancer.user.js downloads
       - run: npm run test:dom
+      - name: Test video buffering priority and native audio fallback
+        run: |
+          node tests/multi-view-sync-test.mjs
+          node tests/live-audio-test.mjs
       - name: Test actual Edge and final extracted package
         shell: pwsh
         run: |
