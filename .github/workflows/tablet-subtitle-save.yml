@@ -23,7 +23,19 @@ jobs:
             body: '{}',
             signal: AbortSignal.timeout(115000)
           });
-          if (!response.ok) throw new Error('Subtitle maintenance HTTP ' + response.status);
-          const result = await response.json();
-          console.log(JSON.stringify({checked: result.checked, complete: result.complete, needsReview: result.needsReview}));
+          const body = await response.text();
+          const htmlFallback = response.ok && /^\s*(?:<!doctype\s+html\b|<html\b)/i.test(body);
+          if (htmlFallback) {
+            // EdgeOne may serve the portal page when the API route is missing.
+            // Do not email the repository owner on every scheduled run for this known deployment issue.
+            // Keep polling so saves resume as soon as the correct cloud function is restored.
+            console.warn('::warning::Subtitle sweep API returned the HTML portal instead of JSON. Nothing was saved in this run. Restore the EdgeOne /api/classroom function route.');
+          } else {
+            if (!response.ok) throw new Error('Subtitle maintenance HTTP ' + response.status);
+            let result;
+            try { result = JSON.parse(body); }
+            catch { throw new Error('Subtitle maintenance returned invalid JSON; check API deployment'); }
+            if (!result || typeof result.checked !== 'number') throw new Error('Subtitle maintenance returned an unexpected result');
+            console.log(JSON.stringify({checked: result.checked, complete: result.complete, needsReview: result.needsReview}));
+          }
           JS
