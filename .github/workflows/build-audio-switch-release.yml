@@ -1,8 +1,8 @@
-name: Build audio-switch release candidate
+name: Build verified classroom 0.10.2
 on:
   push:
-    branches: [fix/audio-switch-continuity-v0-10-2]
-    paths: ['scripts/build-tablet.mjs']
+    branches: [fix/visible-version-and-install-link-0102]
+    paths: ['scripts/school-connector.mjs', 'portal/index.html', '.github/workflows/build-audio-switch-release.yml']
 permissions:
   contents: write
 jobs:
@@ -29,6 +29,9 @@ jobs:
           const payload=readFileSync(path);
           if(m.version!=='0.10.2'||createHash('sha256').update(payload).digest('hex')!==m.sha256)throw Error('Runtime manifest/hash mismatch');
           if(!readFileSync('portal/Classroom_iPad.user.js','utf8').includes(m.sha256))throw Error('Fallback userscript not rebuilt');
+          const html=readFileSync('portal/index.html','utf8');
+          if(!html.includes('课堂助手 · v'+m.version)||!html.includes('Classroom_iPad_v'+m.version+'.user.js')||!html.includes('安装统一课堂助手 v'+m.version))throw Error('Homepage/installer version mismatch');
+          if(!readFileSync(path,'utf8').includes('dataset.ceAppVersion="'+m.version+'"'))throw Error('Runtime version missing');
           console.log('Verified 0.10.2',m.sha256);
           NODE
       - name: Commit verified installable release files to the fix branch
@@ -38,5 +41,5 @@ jobs:
           git add portal/tablet-release.json portal/Classroom_iPad.user.js portal/Classroom_iPad.meta.js portal/Classroom_iPad_v0.10.2.user.js portal/tablet/runtime
           if ! git diff --cached --quiet; then
             git commit -m 'build: verified iPad runtime 0.10.2 with audio switch recovery'
-            git push origin HEAD:fix/audio-switch-continuity-v0-10-2
+            git push origin HEAD:fix/visible-version-and-install-link-0102
           fi
