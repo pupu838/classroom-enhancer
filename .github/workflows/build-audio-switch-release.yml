@@ -1,0 +1,42 @@
+name: Build audio-switch release candidate
+on:
+  push:
+    branches: [fix/audio-switch-continuity-v0-10-2]
+    paths: ['scripts/build-tablet.mjs']
+permissions:
+  contents: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node tests/live-audio-test.mjs && node tests/live-audio-switch-regression-test.mjs
+      - run: node scripts/build-tablet.mjs
+      - name: Verify generated runtime digest and version
+        run: |
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const m=JSON.parse(readFileSync('portal/tablet-release.json','utf8'));
+          const path='portal'+m.path;
+          const payload=readFileSync(path);
+          if(m.version!=='0.10.2'||createHash('sha256').update(payload).digest('hex')!==m.sha256)throw Error('Runtime manifest/hash mismatch');
+          if(!readFileSync('portal/Classroom_iPad.user.js','utf8').includes(m.sha256))throw Error('Fallback userscript not rebuilt');
+          console.log('Verified 0.10.2',m.sha256);
+          NODE
+      - name: Commit verified installable release files to the fix branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add portal/tablet-release.json portal/Classroom_iPad.user.js portal/Classroom_iPad.meta.js portal/Classroom_iPad_v0.10.2.user.js portal/tablet/runtime
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: verified iPad runtime 0.10.2 with audio switch recovery'
+            git push origin HEAD:fix/audio-switch-continuity-v0-10-2
+          fi
