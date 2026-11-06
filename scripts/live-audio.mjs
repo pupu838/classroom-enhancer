@@ -3,7 +3,7 @@
 import {audioDefaults,normalizeAudio} from './audio-tuning.mjs';
 export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>{}}){
  let ctx,bus,dry,wet,output,worklet,boost,tap,meter,active=null,wanted=clockId,enhanced=false,disposed=false,serial=0,preparing=null;
- let volume=clock.volume,muted=clock.muted,started=false,buffering=false,stalledAt=0,driftSince=0,previousTime=-1,pendingResume=null,tuning={...audioDefaults},filters=null;
+ let volume=clock.volume,muted=clock.muted,started=false,buffering=false,stalledAt=0,driftSince=0,previousTime=-1,pendingResume=null,clockPauseOwner=0,handoffGraceUntil=0,tuning={...audioDefaults},filters=null;
  const tracks=new Map(),clean=[],initialMute=clock.muted,base=views.find(v=>v.id===clockId)?.offset||0;
  const emit=()=>window.dispatchEvent(new Event('ce-audio-state'));
  const listen=(target,event,fn)=>{target.addEventListener(event,fn);clean.push(()=>target.removeEventListener(event,fn));};
@@ -57,13 +57,18 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
  }
  function fallback(message){
   if(disposed)return;serial++;started=false;enhanced=false;wanted=clockId;
-  stalledAt=0;driftSince=0;previousTime=-1;
+  stalledAt=0;driftSince=0;previousTime=-1;handoffGraceUntil=0;
   worklet?.port.postMessage({type:'bypass',value:true});
   for(const t of tracks.values()){t.level.gain.value=0;t.a.pause();}
   active=null;clock.muted=muted;clock.volume=volume;onStatus(message);emit();
  }
  async function select(id=wanted,{forceExternal=false}={}){
-  if(disposed)throw Error('播放器已关闭');if(!views.some(v=>v.id===id))throw Error('没有这路音频');
+  if(disposed)throw Error('播放器已关闭');
+  if(!views.some(v=>v.id===id))throw Error('没有这路音频');
+  // A second selection cancels the previous handoff and releases its temporary clock hold.
+  if(clockPauseOwner&&clock.paused&&typeof clock.play==='function'){
+   clockPauseOwner=0;Promise.resolve(clock.play()).catch(()=>{});
+  }
   if(id===clockId&&!enhanced&&!forceExternal){
    wanted=clockId;if(started)fallback('已切回主音轨直放，无需重复下载音频。');
    else{serial++;onStatus('正在使用主音轨直放，优先保证声音连续。');emit();}
@@ -71,8 +76,10 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   }
   if(started&&active?.view.id===id)return;
   wanted=id;const ticket=++serial;init();const track=tracks.get(id),a=track.a;
-  // The browser gesture unlocks audio while the candidate stays silent.
-  // The old audio (or native clock) continues until a verified handoff.
+  const highSpeed=clock.playbackRate>1.25&&typeof clock.pause==='function'&&typeof clock.play==='function';
+  let heldClock=false;
+  // Prime playback in the click gesture, but keep the candidate's gain at zero.
+  // Never mute the old track until the replacement is ready.
   ctx.resume().catch(()=>{});a.preload='auto';a.playbackRate=clock.playbackRate;
   if(!a.src){a.src=track.view.url;a.load();}
   if(a.readyState>=1&&!a.seeking&&Math.abs(targetTime(track)-a.currentTime)>.08)a.currentTime=targetTime(track);
@@ -80,22 +87,52 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   try{
    await waitMedia(a,1);if(ticket!==serial||disposed)return;
    if(!a.seeking&&Math.abs(targetTime(track)-a.currentTime)>.15)a.currentTime=targetTime(track);
-   await waitMedia(a);if(ticket!==serial||disposed)return;
-   // Buffering may take seconds: one final alignment, never a seek loop.
-   if(Math.abs(targetTime(track)-a.currentTime)>.45){
-    a.currentTime=targetTime(track);await waitMedia(a);if(ticket!==serial||disposed)return;
+   await waitMedia(a,3,16000);if(ticket!==serial||disposed)return;
+   // At 2–5x, the master can advance many seconds during one remote MP4 seek.
+   // Once the new track is warm, hold the video clock for ONLY the final alignment.
+   // This prevents an endless moving-target seek/rebuffer loop.
+   if(highSpeed&&!clock.paused&&!clock.seeking){
+    onStatus('倍速音轨正在最后对齐，画面将短暂停顿后自动继续…');
+    clockPauseOwner=ticket;heldClock=true;clock.pause();a.pause();
+    if(Math.abs(targetTime(track)-a.currentTime)>.08)a.currentTime=targetTime(track);
+    await waitMedia(a,3,16000);if(ticket!==serial||disposed)return;
+   }else if(Math.abs(targetTime(track)-a.currentTime)>.45){
+    // Normal-speed switching retains a single bounded catch-up seek.
+    a.currentTime=targetTime(track);await waitMedia(a,3,12000);
+    if(ticket!==serial||disposed)return;
    }
-   if(!clock.paused)await a.play();else a.pause();
-   if(ticket!==serial||disposed)return;
    const drift=Math.abs(targetTime(track)-a.currentTime),ahead=bufferAhead(a);
-   if(drift>.75||a.seeking||a.readyState<3||(ahead!==null&&ahead<.35&&!clock.paused))
+   if(drift>.75||a.seeking||a.readyState<3||
+      (!heldClock&&!clock.paused&&ahead!==null&&ahead<.35))
     throw Error('新音轨无法稳定跟上视频，已保留原来的声音');
+   if(!heldClock){if(!clock.paused)await a.play();else a.pause();}
+   if(ticket!==serial||disposed)return;
    const old=active;if(old!==track)worklet?.port.postMessage({type:'reset'});
    active=track;previousTime=-1;stalledAt=0;driftSince=0;started=true;
+   handoffGraceUntil=performance.now()+(highSpeed?Math.min(4500,1400+500*clock.playbackRate):800);
    clock.muted=true;updateGain();ramp(track.level.gain,1,.015);
    if(old&&old!==track){ramp(old.level.gain,0,.015);setTimeout(()=>{if(active!==old)old.a.pause();},150);}
-   onStatus('正在使用'+track.view.label+'音频'+(enhanced?' · 浏览器人声增强':' · 原声')+'。切换音频保留播放进度。');emit();window.dispatchEvent(new Event('ce-audio-track'));
-  }catch(e){if(ticket!==serial||disposed)return;if(track!==active)track.a.pause();wanted=active?.view.id||clockId;emit();throw e;}
+   if(heldClock){
+    // Resume the common clock and the new audio together. No second moving seek.
+    const videoStart=clock.play(),audioStart=a.play();
+    await Promise.all([videoStart,audioStart]);
+    if(ticket!==serial||disposed)return;
+    heldClock=false;clockPauseOwner=0;
+   }
+   onStatus('正在使用'+track.view.label+'音频'+(enhanced?' · 浏览器人声增强':' · 原声')+'。已按当前倍速同步。');
+   emit();window.dispatchEvent(new Event('ce-audio-track'));
+  }catch(e){
+   if(ticket!==serial||disposed)return;
+   if(active===track)fallback('独立音轨接入失败，已恢复主音轨直放。');
+   else{a.pause();wanted=active?.view.id||clockId;emit();}
+   throw e;
+  }finally{
+   // Even on failure/cancellation, never leave the master video paused.
+   if(heldClock&&clockPauseOwner===ticket){
+    clockPauseOwner=0;
+    if(clock.paused)Promise.resolve(clock.play()).catch(()=>onStatus('音轨已恢复，请点播放继续。'));
+   }
+  }
  }
  async function effects(){if(preparing)return preparing;if(worklet)return;
   preparing=(async()=>{if(!ctx.audioWorklet)throw Error('此浏览器未提供实时音频处理');let url;
@@ -122,13 +159,13 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   if(clock.paused||clock.seeking||buffering){a.pause();stalledAt=0;driftSince=0;previousTime=-1;return;}
   if(!force)align(track);
   const now=performance.now(),drift=Math.abs(targetTime(track)-a.currentTime);
-  if(drift>.9&&!a.seeking){
+  if(drift>.9&&!a.seeking&&now>=handoffGraceUntil){
    if(!driftSince)driftSince=now;
    else if(now-driftSince>1500){fallback('独立音轨与画面失去同步，已自动恢复主音轨直放。');return;}
   }else driftSince=0;
   if(a.readyState<3||a.seeking){
    if(!stalledAt)stalledAt=now;
-   else if(now-stalledAt>1300){fallback('独立音轨缓冲中断，已自动恢复主音轨直放。');return;}
+   else if(now-stalledAt>Math.min(4500,Math.max(1300,800+500*clock.playbackRate))){fallback('独立音轨缓冲中断，已自动恢复主音轨直放。');return;}
    return;
   }
   if(a.paused&&!pendingResume){
@@ -138,7 +175,7 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   }
   if(!a.paused&&a.currentTime===previousTime){
    if(!stalledAt)stalledAt=now;
-   else if(now-stalledAt>1300){fallback('独立音轨连续停顿，已自动恢复主音轨直放。');return;}
+   else if(now-stalledAt>Math.min(4500,Math.max(1300,800+500*clock.playbackRate))){fallback('独立音轨连续停顿，已自动恢复主音轨直放。');return;}
   }else stalledAt=0;
   previousTime=a.currentTime;
  }
