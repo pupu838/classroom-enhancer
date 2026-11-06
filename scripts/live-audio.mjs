@@ -73,7 +73,7 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   wanted=id;const ticket=++serial;init();const track=tracks.get(id),a=track.a;
   // The browser gesture unlocks audio while the candidate stays silent.
   // The old audio (or native clock) continues until a verified handoff.
-  ctx.resume().catch(()=>{});a.preload='auto';
+  ctx.resume().catch(()=>{});a.preload='auto';a.playbackRate=clock.playbackRate;
   if(!a.src){a.src=track.view.url;a.load();}
   if(a.readyState>=1&&!a.seeking&&Math.abs(targetTime(track)-a.currentTime)>.08)a.currentTime=targetTime(track);
   const primed=!clock.paused?a.play():null;primed?.catch(()=>{});
