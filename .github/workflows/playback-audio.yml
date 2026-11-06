@@ -1,0 +1,25 @@
+name: Audio switch regressions
+on:
+  pull_request:
+    paths:
+      - 'scripts/live-audio.mjs'
+      - 'tests/live-audio*.mjs'
+      - '.github/workflows/playback-audio.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/live-audio.mjs'
+      - 'tests/live-audio*.mjs'
+permissions:
+  contents: read
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/live-audio-test.mjs
+      - run: node tests/live-audio-switch-regression-test.mjs
