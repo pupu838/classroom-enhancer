@@ -13,6 +13,7 @@ try{
  const before=room.seeks;room._time=97.8;sync.sync();assert.equal(room.seeks,before);assert(room.playbackRate>1&&room.playbackRate<=1.035);
  clock.currentTime=123;sync.setVisible(['room']);assert.equal(clock.currentTime,123);assert.equal(room.currentTime,121);assert.equal(slides.paused,true);
  clock.playbackRate=1.75;clock.dispatchEvent(new Event('ratechange'));assert(Math.abs(room.playbackRate-1.75)<.001);
+ clock.playbackRate=5;clock.dispatchEvent(new Event('ratechange'));assert(Math.abs(room.playbackRate-5)<.001,'5x video must propagate to auxiliary views');
  clock.paused=true;clock.dispatchEvent(new Event('pause'));assert.equal(room.paused,true);
  clock.paused=false;clock.dispatchEvent(new Event('playing'));await Promise.resolve();await Promise.resolve();assert.equal(room.paused,false);
  clock.dispatchEvent(new Event('waiting'));assert.equal(room.paused,true);sync.sync();assert.equal(room.paused,true);
