@@ -1,8 +1,8 @@
-name: Build verified classroom 0.10.2
+name: Build verified classroom 0.10.3 (5x)
 on:
   push:
-    branches: [fix/visible-version-and-install-link-0102]
-    paths: ['scripts/school-connector.mjs', 'portal/index.html', '.github/workflows/build-audio-switch-release.yml']
+    branches: [feat/playback-speeds-up-to-5x-0103]
+    paths: ['scripts/build-tablet.mjs', 'scripts/multi-view-player.mjs', 'tests/live-audio-test.mjs', '.github/workflows/build-audio-switch-release.yml']
 permissions:
   contents: write
 jobs:
@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: node tests/live-audio-test.mjs && node tests/live-audio-switch-regression-test.mjs
+      - run: node tests/live-audio-test.mjs && node tests/live-audio-switch-regression-test.mjs && node tests/multi-view-sync-test.mjs
       - run: node scripts/build-tablet.mjs
       - name: Verify generated runtime digest and version
         run: |
@@ -27,19 +27,20 @@ jobs:
           const m=JSON.parse(readFileSync('portal/tablet-release.json','utf8'));
           const path='portal'+m.path;
           const payload=readFileSync(path);
-          if(m.version!=='0.10.2'||createHash('sha256').update(payload).digest('hex')!==m.sha256)throw Error('Runtime manifest/hash mismatch');
+          if(m.version!=='0.10.3'||createHash('sha256').update(payload).digest('hex')!==m.sha256)throw Error('Runtime manifest/hash mismatch');
           if(!readFileSync('portal/Classroom_iPad.user.js','utf8').includes(m.sha256))throw Error('Fallback userscript not rebuilt');
           const html=readFileSync('portal/index.html','utf8');
           if(!html.includes('课堂助手 · v'+m.version)||!html.includes('Classroom_iPad_v'+m.version+'.user.js')||!html.includes('安装统一课堂助手 v'+m.version))throw Error('Homepage/installer version mismatch');
           if(!readFileSync(path,'utf8').includes('dataset.ceAppVersion="'+m.version+'"'))throw Error('Runtime version missing');
-          console.log('Verified 0.10.2',m.sha256);
+          if(!readFileSync('scripts/multi-view-player.mjs','utf8').includes('<option value="5">5 倍速</option>'))throw Error('5x speed selector missing');
+          console.log('Verified 0.10.3 / 5x',m.sha256);
           NODE
       - name: Commit verified installable release files to the fix branch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add portal/tablet-release.json portal/Classroom_iPad.user.js portal/Classroom_iPad.meta.js portal/Classroom_iPad_v0.10.2.user.js portal/tablet/runtime
+          git add portal/tablet-release.json portal/Classroom_iPad.user.js portal/Classroom_iPad.meta.js portal/Classroom_iPad_v0.10.3.user.js portal/tablet/runtime
           if ! git diff --cached --quiet; then
-            git commit -m 'build: verified iPad runtime 0.10.2 with audio switch recovery'
-            git push origin HEAD:fix/visible-version-and-install-link-0102
+            git commit -m 'build: verified 0.10.3 iPad 5x playback runtime'
+            git push origin HEAD:feat/playback-speeds-up-to-5x-0103
           fi
