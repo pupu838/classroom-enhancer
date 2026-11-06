@@ -165,7 +165,7 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   }else driftSince=0;
   if(a.readyState<3||a.seeking){
    if(!stalledAt)stalledAt=now;
-   else if(now-stalledAt>Math.min(4500,1500+500*clock.playbackRate)){fallback('独立音轨缓冲中断，已自动恢复主音轨直放。');return;}
+   else if(now-stalledAt>Math.min(4500,Math.max(1300,800+500*clock.playbackRate))){fallback('独立音轨缓冲中断，已自动恢复主音轨直放。');return;}
    return;
   }
   if(a.paused&&!pendingResume){
@@ -175,7 +175,7 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
   }
   if(!a.paused&&a.currentTime===previousTime){
    if(!stalledAt)stalledAt=now;
-   else if(now-stalledAt>Math.min(4500,1500+500*clock.playbackRate)){fallback('独立音轨连续停顿，已自动恢复主音轨直放。');return;}
+   else if(now-stalledAt>Math.min(4500,Math.max(1300,800+500*clock.playbackRate))){fallback('独立音轨连续停顿，已自动恢复主音轨直放。');return;}
   }else stalledAt=0;
   previousTime=a.currentTime;
  }
