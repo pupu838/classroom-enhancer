@@ -19,7 +19,7 @@ globalThis.Audio=class extends EventTarget{
  get currentTime(){return this._currentTime;}
  set currentTime(t){
   this._currentTime=t;this.seeks++;this.seeking=true;this.readyState=1;
-  setTimeout(()=>{this.seeking=false;this.readyState=4;this.dispatchEvent(new Event('seeked'));this.dispatchEvent(new Event('canplay'));},75);
+  setTimeout(()=>{this.seeking=false;this.readyState=4;this.dispatchEvent(new Event('seeked'));this.dispatchEvent(new Event('canplay'));},this.seeks===1?330:75);
  }
  load(){this.readyState=1;}
  async play(){if(this.rejectNext){this.rejectNext=false;throw Error('blocked');}this.paused=false;}
@@ -47,8 +47,7 @@ async function scenario(rate){
   const first=bank.select('room');
   await delay(45);
   assert.equal(clock.paused,false,rate+'x: original video must play while candidate is cold');
-  const a=media[1];
-  a.readyState=4;a.dispatchEvent(new Event('canplay'));
+  const a=media[0];
   await first;
   assert.equal(bank.state().activeId,'room',rate+'x: independent audio must become selected');
   assert.equal(clock.paused,false,rate+'x: video resumes automatically');
@@ -63,7 +62,6 @@ async function scenario(rate){
   await delay(45);
   assert.equal(bank.state().activeId,'room',rate+'x: old track stays selected until new track warms');
   assert.equal(clock.paused,false,rate+'x: old playback must not freeze during initial preload');
-  const b=media[2];b.readyState=4;b.dispatchEvent(new Event('canplay'));
   await second;
   assert.equal(bank.state().activeId,'slides',rate+'x: second switch must succeed');
   assert.equal(clock.paused,false);

@@ -1,41 +1,84 @@
 // Native media streaming, independent of the download/remux pipeline.
-// A fixed video remains the clock. Changing audio never changes that video.
 import {audioDefaults,normalizeAudio} from './audio-tuning.mjs';
+
+const mediaEvents=['loadedmetadata','loadeddata','canplay','seeked','playing','progress'];
+const noRecording=()=>Error('这路音频在当前进度没有录音。');
+
+function startMedia(media){
+ return Promise.resolve(media.play()).then(()=>null,error=>error);
+}
+
+function waitMedia(media,minimum,signal,{playback,timeout=12000}={}){
+ return new Promise((resolve,reject)=>{
+  let started=minimum===1||!playback,settled=false;
+  const finish=error=>{
+   if(settled)return;
+   settled=true;clearTimeout(timer);
+   for(const event of mediaEvents)media.removeEventListener(event,check);
+   media.removeEventListener('error',check);
+   signal.removeEventListener('abort',abort);
+   error?reject(error):resolve();
+  };
+  const check=()=>{
+   if(media.error)finish(Error('这路音频无法读取。'));
+   else if(started&&media.readyState>=minimum&&(minimum===1||!media.seeking))finish();
+  };
+  const abort=()=>finish(signal.reason);
+  const timer=setTimeout(()=>finish(Error('这路音频缓冲超时，请稍后重试。')),timeout);
+  for(const event of mediaEvents)media.addEventListener(event,check);
+  media.addEventListener('error',check);
+  signal.addEventListener('abort',abort,{once:true});
+  playback?.then(error=>{
+   if(error)finish(error);
+   else{started=true;check();}
+  });
+  if(signal.aborted)abort();else check();
+ });
+}
+
 export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>{}}){
- let ctx,bus,dry,wet,output,worklet,boost,tap,meter,active=null,wanted=clockId,enhanced=false,disposed=false,serial=0,preparing=null;
- let volume=clock.volume,muted=clock.muted,started=false,buffering=false,stalledAt=0,driftSince=0,previousTime=-1,pendingResume=null,tuning={...audioDefaults},filters=null;
- const tracks=new Map(),clean=[],initialMute=clock.muted,base=views.find(v=>v.id===clockId)?.offset||0;
+ let ctx,bus,dry,wet,output,worklet,boost,tap,meter,preparing,filters;
+ let active=null,pending=null,enhanced=false,disposed=false,buffering=false,needsGesture=false;
+ let stalledAt=0,driftSince=0,previousTime=-1,lastProgressAt=0,recoverAfterBuffer=false,recoveryUsed=false,pendingResume=null;
+ let volume=clock.volume,muted=clock.muted,tuning={...audioDefaults};
+ const nativeTracks=new Map(),effectTracks=new Map(),clean=[];
+ const base=views.find(view=>view.id===clockId)?.offset||0;
  const emit=()=>window.dispatchEvent(new Event('ce-audio-state'));
  const listen=(target,event,fn)=>{target.addEventListener(event,fn);clean.push(()=>target.removeEventListener(event,fn));};
- const targetTime=track=>Math.max(0,clock.currentTime+base-(track.view.offset||0));
+ const targetTime=track=>clock.currentTime+base-(track.view.offset||0);
+ const clockStopped=()=>clock.paused||clock.seeking||buffering;
+ const hasRecording=(media,time)=>time>=-.05&&(!Number.isFinite(media.duration)||time<media.duration);
  const ramp=(param,value,time=.03)=>param.setTargetAtTime(value,ctx.currentTime,time);
- function state(){return {activeId:active?.view.id||clockId,wantedId:wanted,started,enhanced,tuning:{...tuning},worklet:!!worklet,neural:!!worklet?.neural,volume,muted,ctx,analyser:tap,outputAnalyser:meter,media:active?{time:active.a.currentTime,paused:active.a.paused,rate:active.a.playbackRate,ready:active.a.readyState,bufferAhead:bufferAhead(active.a)}:null};}
+ function state(){
+  const media=active?.a;
+  return {activeId:active?.view.id||clockId,wantedId:pending?.track.view.id||active?.view.id||clockId,started:!!active,
+   enhanced,needsGesture,tuning:{...tuning},worklet:!!worklet,neural:!!worklet?.neural,volume,muted,ctx,analyser:tap,outputAnalyser:meter,
+   media:media?{time:media.currentTime,paused:media.paused,rate:media.playbackRate,ready:media.readyState,bufferAhead:bufferAhead(media)}:null};
+ }
  function updateGain(){if(!ctx)return;ramp(output.gain,muted?0:volume);ramp(dry.gain,enhanced?0:1);ramp(wet.gain,enhanced?1:0);if(boost)ramp(boost.gain,10**(tuning.gain/20));if(filters){ramp(filters.hp.frequency,tuning.highpass);ramp(filters.lp.frequency,tuning.lowpass);for(const k of ['bass','body','presence','treble'])ramp(filters[k].gain,tuning[k]);ramp(filters.limiter.threshold,tuning.ceiling);}}
- function init(){
+ function initEffectsAudio(){
   if(ctx)return;
   ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:48000});bus=ctx.createGain();dry=ctx.createGain();wet=ctx.createGain();output=ctx.createGain();tap=ctx.createAnalyser();tap.fftSize=2048;
   dry.gain.value=1;wet.gain.value=0;output.gain.value=muted?0:volume;meter=ctx.createAnalyser();meter.fftSize=2048;
   bus.connect(tap);bus.connect(dry);dry.connect(output);output.connect(meter);meter.connect(ctx.destination);
-  // Create all three elements inside the initiating gesture; metadata is cheap,
-  // and only the selected track is played until a switch is requested.
-  for(const view of views){const a=new Audio();a.crossOrigin='anonymous';a.preload='none';a.playsInline=true;a.preservesPitch=true;
-   const source=ctx.createMediaElementSource(a),level=ctx.createGain();level.gain.value=0;source.connect(level);level.connect(bus);
-   const track={view,a,source,level};tracks.set(view.id,track);
-   listen(a,'error',()=>{if(active===track)fallback('这路音频加载失败，已恢复学校原声。');});
-  }
  }
- function waitMedia(a,minimum=3,timeout=12000){
-  return new Promise((resolve,reject)=>{
-   const usable=()=>a.readyState>=minimum&&(minimum<3||!a.seeking);
-   if(usable()){resolve();return;}
-   let settled=false;
-   const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);for(const name of ['loadedmetadata','canplay','seeked','playing'])a.removeEventListener(name,check);a.removeEventListener('error',fail);error?reject(error):resolve();};
-   const check=()=>{if(usable())finish();};
-   const fail=()=>finish(Error('学校媒体暂不允许这路音轨在浏览器处理'));
-   const timer=setTimeout(()=>finish(Error('独立音轨缓冲超时，已保留原有声音，请稍后重试')),timeout);
-   for(const name of ['loadedmetadata','canplay','seeked','playing'])a.addEventListener(name,check);
-   a.addEventListener('error',fail);check();
-  });
+ function getTrack(view,processed){
+  const tracks=processed?effectTracks:nativeTracks;
+  if(tracks.has(view.id))return tracks.get(view.id);
+  const a=new Audio();
+  a.preload='none';a.playsInline=true;a.preservesPitch=true;a.muted=!processed;
+  let level;
+  // Raw playback can use the school's native cross-origin media permissions.
+  // Only explicit sound processing needs a CORS-enabled Web Audio source.
+  if(processed){
+   initEffectsAudio();a.crossOrigin='anonymous';
+   level=ctx.createGain();level.gain.value=0;
+   ctx.createMediaElementSource(a).connect(level);level.connect(bus);
+  }
+  const track={view,a,level};
+  tracks.set(view.id,track);
+  listen(a,'error',()=>{if(active===track)useClock('这路音频加载失败，已恢复主音轨。');});
+  return track;
  }
  function bufferAhead(a){
   try{const b=a.buffered,t=a.currentTime;if(!b||typeof b.length!=='number')return null;
@@ -43,59 +86,115 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
    return b.length?0:null;
   }catch{return null;}
  }
- function align(track,force=false){
-  const a=track.a,target=targetTime(track),drift=target-a.currentTime;
-  // Only an explicit master timeline jump may seek an active stream.
-  // Drift-driven repeated seeks on Safari discard MP4 range buffers.
-  if(force&&a.readyState>=1&&!a.seeking&&Math.abs(drift)>.08){
-   a.currentTime=target;a.playbackRate=clock.playbackRate;driftSince=0;stalledAt=0;return;
-  }
-  if(a.seeking||a.readyState<3)return;
-  const correction=Math.abs(drift)>.08?Math.max(-.025,Math.min(.025,drift*.08)):0;
-  const rate=clock.playbackRate*(1+correction);
-  if(Math.abs(a.playbackRate-rate)>.0001)a.playbackRate=rate;
+ function resetSync(){
+  stalledAt=0;driftSince=0;previousTime=-1;lastProgressAt=0;recoverAfterBuffer=false;recoveryUsed=false;pendingResume=null;needsGesture=false;
  }
- function fallback(message){
-  if(disposed)return;serial++;started=false;enhanced=false;wanted=clockId;
-  stalledAt=0;driftSince=0;previousTime=-1;
+ function pauseTrack(track){
+  if(track.level)track.level.gain.value=0;
+  else track.a.muted=true;
+  track.a.pause();
+  track.a.preload='none';
+ }
+ function applyOutput(){
+  clock.muted=!!active||muted;
+  clock.volume=volume;
+  if(active&&!active.level){active.a.volume=volume;active.a.muted=muted;}
+  updateGain();
+ }
+ function useClock(message){
+  if(active)pauseTrack(active);
+  active=null;enhanced=false;resetSync();
   worklet?.port.postMessage({type:'bypass',value:true});
-  for(const t of tracks.values()){t.level.gain.value=0;t.a.pause();}
-  active=null;clock.muted=muted;clock.volume=volume;onStatus(message);emit();
+  applyOutput();onStatus(message);emit();
  }
- async function select(id=wanted,{forceExternal=false}={}){
-  if(disposed)throw Error('播放器已关闭');if(!views.some(v=>v.id===id))throw Error('没有这路音频');
-  if(id===clockId&&!enhanced&&!forceExternal){
-   wanted=clockId;if(started)fallback('已切回主音轨直放，无需重复下载音频。');
-   else{serial++;onStatus('正在使用主音轨直放，优先保证声音连续。');emit();}
-   return;
+ function releaseClock(request){
+  if(!request.heldClock)return;
+  request.heldClock=false;
+  if(!disposed&&clock.paused&&!clock.ended)clock.play().catch(()=>onStatus('请点播放继续。'));
+ }
+ function cancelSelection(){
+  if(!pending)return;
+  const request=pending;pending=null;request.controller.abort();
+  if(request.track!==active)pauseTrack(request.track);
+  releaseClock(request);
+ }
+ async function alignCandidate(track,signal,timeout){
+  const a=track.a,time=targetTime(track);
+  if(!hasRecording(a,time))throw noRecording();
+  const target=Math.max(0,time);
+  if(Math.abs(a.currentTime-target)>.08)a.currentTime=target;
+  a.playbackRate=clock.playbackRate;
+  // Some browsers don't replenish media data after a seek until play is called.
+  await waitMedia(a,3,signal,{playback:startMedia(a),timeout});
+ }
+ async function select(id=pending?.track.view.id||active?.view.id||clockId,{forceExternal=enhanced,enableEffects=false}={}){
+  if(disposed)throw Error('播放器已关闭');
+  const view=views.find(item=>item.id===id);
+  if(!view)throw Error('没有这路音频');
+  cancelSelection();
+  if(id===clockId&&!forceExternal){
+   useClock('正在使用主音轨原声。');return true;
   }
-  if(started&&active?.view.id===id)return;
-  wanted=id;const ticket=++serial;init();const track=tracks.get(id),a=track.a;
-  // The browser gesture unlocks audio while the candidate stays silent.
-  // The old audio (or native clock) continues until a verified handoff.
-  ctx.resume().catch(()=>{});a.preload='auto';a.playbackRate=clock.playbackRate;
-  if(!a.src){a.src=track.view.url;a.load();}
-  if(a.readyState>=1&&!a.seeking&&Math.abs(targetTime(track)-a.currentTime)>.08)a.currentTime=targetTime(track);
-  const primed=!clock.paused?a.play():null;primed?.catch(()=>{});
+  if(active?.view.id===id&&(!forceExternal||active.level)){
+   if(enableEffects){enhanced=true;worklet.port.postMessage({type:'bypass',value:false});updateGain();}
+   onStatus('正在使用'+view.label+'音频。');emit();return true;
+  }
+  const track=getTrack(view,forceExternal),a=track.a;
+  const request={track,controller:new AbortController(),heldClock:false};
+  const {signal}=request.controller;pending=request;
+  emit();
   try{
-   await waitMedia(a,1);if(ticket!==serial||disposed)return;
-   if(!a.seeking&&Math.abs(targetTime(track)-a.currentTime)>.15)a.currentTime=targetTime(track);
-   await waitMedia(a);if(ticket!==serial||disposed)return;
-   // Buffering may take seconds: one final alignment, never a seek loop.
-   if(Math.abs(targetTime(track)-a.currentTime)>.45){
-    a.currentTime=targetTime(track);await waitMedia(a);if(ticket!==serial||disposed)return;
+   if(track.level)ctx.resume().catch(()=>{});
+   a.preload='auto';a.playbackRate=clock.playbackRate;
+   if(!a.src||a.error){a.src=view.url;a.load();}
+   const priming=a.readyState<1?startMedia(a):undefined;
+   await waitMedia(a,1,signal,{playback:priming});
+   signal.throwIfAborted();
+   await alignCandidate(track,signal);
+   signal.throwIfAborted();
+   if(a.audioTracks?.length===0)throw Error('这路画面没有可播放的音轨。');
+
+   if(enableEffects){
+    onStatus('正在加载声音调整，当前声音继续播放…');
+    await effects();
+    signal.throwIfAborted();
    }
-   if(!clock.paused)await a.play();else a.pause();
-   if(ticket!==serial||disposed)return;
-   const drift=Math.abs(targetTime(track)-a.currentTime),ahead=bufferAhead(a);
-   if(drift>.75||a.seeking||a.readyState<3||(ahead!==null&&ahead<.35&&!clock.paused))
-    throw Error('新音轨无法稳定跟上视频，已保留原来的声音');
-   const old=active;if(old!==track)worklet?.port.postMessage({type:'reset'});
-   active=track;previousTime=-1;stalledAt=0;driftSince=0;started=true;
-   clock.muted=true;updateGain();ramp(track.level.gain,1,.015);
-   if(old&&old!==track){ramp(old.level.gain,0,.015);setTimeout(()=>{if(active!==old)old.a.pause();},150);}
-   onStatus('正在使用'+track.view.label+'音频'+(enhanced?' · 浏览器人声增强':' · 原声')+'。切换音频保留播放进度。');emit();window.dispatchEvent(new Event('ce-audio-track'));
-  }catch(e){if(ticket!==serial||disposed)return;if(track!==active)track.a.pause();wanted=active?.view.id||clockId;emit();throw e;}
+   // Warm the candidate without stopping the current playback. If a slow
+   // range seek let the clock run ahead, hold it only for the final alignment.
+   if(Math.abs(Math.max(0,targetTime(track))-a.currentTime)>.45){
+    request.heldClock=!clockStopped();
+    if(request.heldClock)clock.pause();
+    a.pause();
+    await alignCandidate(track,signal,4000);
+    signal.throwIfAborted();
+   }
+   if(Math.abs(Math.max(0,targetTime(track))-a.currentTime)>.75)throw Error('这路音频暂时无法与画面对齐，请稍后重试。');
+   if(clockStopped())a.pause();
+
+   if(active&&active!==track)pauseTrack(active);
+   active=track;pending=null;resetSync();
+   enhanced=!!track.level&&(enhanced||enableEffects);
+   worklet?.port.postMessage({type:'bypass',value:!enhanced});
+   worklet?.port.postMessage({type:'reset'});
+   if(track.level)ramp(track.level.gain,1,.015);
+   applyOutput();
+   onStatus('正在使用'+view.label+'音频'+(enhanced?' · 声音调整':' · 原声')+'。');
+   emit();window.dispatchEvent(new Event('ce-audio-track'));
+   releaseClock(request);
+   sync();
+   return true;
+  }catch(error){
+   if(signal.aborted||disposed)return false;
+   if(track!==active)pauseTrack(track);
+   pending=null;releaseClock(request);
+   if(forceExternal&&!enableEffects&&(a.error||error.name==='NotSupportedError')){
+    const selected=await select(id,{forceExternal:false});
+    if(selected)onStatus('这路音频无法使用声音调整，正在播放原声。');
+    return selected;
+   }
+   emit();
+   throw error;
+  }
  }
  async function effects(){if(preparing)return preparing;if(worklet)return;
   preparing=(async()=>{if(!ctx.audioWorklet)throw Error('此浏览器未提供实时音频处理');let url;
@@ -109,43 +208,86 @@ export function createLiveAudio({clock,views,clockId,workletSource,onStatus=()=>
    boost=ctx.createGain();bus.connect(worklet);worklet.connect(hp);hp.connect(lp);lp.connect(bass);bass.connect(body);body.connect(presence);presence.connect(treble);treble.connect(boost);boost.connect(limiter);limiter.connect(wet);wet.connect(output);updateGain();
   })().finally(()=>preparing=null);return preparing;
  }
- async function setEnhanced(value){if(!value){
-   enhanced=false;worklet?.port.postMessage({type:'bypass',value:true});
-   if(active?.view.id===clockId)fallback('已关闭增强，恢复主音轨直放，减少重复下载。');
-   else{updateGain();onStatus('已关闭降噪，继续播放所选音轨原声。');emit();}
-   return;
-  }if(!started)await select(wanted,{forceExternal:true});if(!worklet)onStatus('正在加载小型降噪模块，当前音轨原声继续播放…');await effects();if(disposed)return;enhanced=true;worklet?.port.postMessage({type:'bypass',value:false});updateGain();onStatus(worklet?.neural?'已开启 RNNoise 降噪试验；不保证提高课堂人声清晰度，可随时关闭对比原声。':'浏览器人声增强已开启，可在无人讲话时采样底噪。');emit();}
- function sync(force=false){
-  if(!started||!active||disposed)return;
-  const track=active,a=track.a;
-  if(force)align(track,true);
-  if(clock.paused||clock.seeking||buffering){a.pause();stalledAt=0;driftSince=0;previousTime=-1;return;}
-  if(!force)align(track);
-  const now=performance.now(),drift=Math.abs(targetTime(track)-a.currentTime);
-  if(drift>.9&&!a.seeking){
-   if(!driftSince)driftSince=now;
-   else if(now-driftSince>1500){fallback('独立音轨与画面失去同步，已自动恢复主音轨直放。');return;}
-  }else driftSince=0;
-  if(a.readyState<3||a.seeking){
-   if(!stalledAt)stalledAt=now;
-   else if(now-stalledAt>1300){fallback('独立音轨缓冲中断，已自动恢复主音轨直放。');return;}
+ async function setEnhanced(value){
+  if(value){
+   if(!enhanced)await select(undefined,{forceExternal:true,enableEffects:true});
    return;
   }
-  if(a.paused&&!pendingResume){
-   pendingResume=Promise.resolve(a.play()).catch(()=>{
-    if(active===track&&!disposed)fallback('独立音轨无法继续播放，已恢复主音轨直放。');
-   }).finally(()=>{pendingResume=null;});
-  }
-  if(!a.paused&&a.currentTime===previousTime){
-   if(!stalledAt)stalledAt=now;
-   else if(now-stalledAt>1300){fallback('独立音轨连续停顿，已自动恢复主音轨直放。');return;}
-  }else stalledAt=0;
-  previousTime=a.currentTime;
+  enhanced=false;worklet?.port.postMessage({type:'bypass',value:true});
+  if(active?.view.id===clockId&&active.level)useClock('已关闭声音调整，恢复主音轨原声。');
+  else{updateGain();onStatus('已关闭声音调整，继续播放所选音轨原声。');emit();}
  }
- for(const event of ['play','playing','seeked','ratechange'])listen(clock,event,()=>{if(event==='playing'||event==='seeked')buffering=false;sync(event==='seeked');});
- for(const event of ['pause','waiting','ended'])listen(clock,event,()=>{if(event==='waiting')buffering=true;if(active)active.a.pause();});
- listen(clock,'seeking',()=>{worklet?.port.postMessage({type:'reset'});if(active){active.a.pause();align(active,true);}window.dispatchEvent(new Event('ce-audio-seek'));});
- listen(clock,'volumechange',()=>{if(started&&!clock.muted)clock.muted=true;});
- const timer=setInterval(()=>sync(),500);
- return {state,select,setEnhanced,update(values){tuning=normalizeAudio(values,tuning);worklet?.port.postMessage({type:'strength',value:tuning.strength});updateGain();},calibrate(){if(worklet)worklet.port.postMessage({type:'calibrate'});},getMuted:()=>muted,getVolume:()=>volume,setMuted(value){muted=!!value;if(started)updateGain();else clock.muted=muted;emit();},setVolume(value){volume=Math.max(0,Math.min(1,value));if(started)updateGain();else clock.volume=volume;emit();},destroy(){disposed=true;serial++;clearInterval(timer);clean.forEach(fn=>fn());for(const t of tracks.values()){t.a.pause();t.a.removeAttribute('src');t.a.load();}ctx?.close().catch(()=>{});clock.muted=started?muted:initialMute;},getCapture(){if(!started)throw Error('请先选择一路音频');return {ctx,bus,clock,baseOffset:base};}};
+ function seekActive(){
+  if(!active||active.a.readyState<1)return;
+  const time=targetTime(active),a=active.a;
+  if(hasRecording(a,time)&&Math.abs(Math.max(0,time)-a.currentTime)>.08)a.currentTime=Math.max(0,time);
+  a.playbackRate=clock.playbackRate;
+  stalledAt=0;driftSince=0;previousTime=-1;lastProgressAt=0;recoverAfterBuffer=false;recoveryUsed=false;
+ }
+ function resume(){
+  const track=active;
+  if(!track||clockStopped()||!track.a.paused||pendingResume)return;
+  const request=startMedia(track.a);
+  pendingResume=request;
+  request.then(error=>{
+   if(disposed||active!==track||pendingResume!==request)return;
+   pendingResume=null;
+   if(!error){if(needsGesture){needsGesture=false;onStatus('已恢复所选音轨。');emit();}return;}
+   if(error.name==='AbortError'||clockStopped())return;
+   if(error.name==='NotAllowedError'){
+    needsGesture=true;onStatus('点播放栏的“继续声音”恢复所选音轨。');emit();
+   }else useClock('这路音频无法继续播放，已恢复主音轨。');
+  });
+ }
+ function sync(){
+  if(!active||disposed)return;
+  const track=active,a=track.a;
+  if(clockStopped()){a.pause();stalledAt=0;driftSince=0;previousTime=-1;lastProgressAt=0;return;}
+  if(needsGesture)return;
+  if(!hasRecording(a,targetTime(track))||a.ended){useClock('这路音频在当前进度没有录音，已恢复主音轨。');return;}
+  if(a.paused)resume();
+
+  const now=performance.now(),drift=Math.max(0,targetTime(track))-a.currentTime;
+  if(a.currentTime!==previousTime){previousTime=a.currentTime;lastProgressAt=now;}
+  if(a.readyState<3||a.seeking||a.paused||now-lastProgressAt>1000){
+   stalledAt||=now;driftSince=0;recoverAfterBuffer=true;
+   if(now-stalledAt>(a.seeking?8000:5000))useClock('这路音频长时间未能恢复缓冲，已恢复主音轨。');
+   return;
+  }
+  stalledAt=0;
+  if(recoverAfterBuffer){
+   recoverAfterBuffer=false;
+   if(Math.abs(drift)>.9&&!recoveryUsed){seekActive();recoveryUsed=true;return;}
+  }
+  if(Math.abs(drift)<.45)recoveryUsed=false;
+  if(Math.abs(drift)>.9){
+   driftSince||=now;
+   if(now-driftSince>1500){useClock('这路音频持续不同步，已恢复主音轨。');return;}
+  }else driftSince=0;
+  const correction=Math.abs(drift)>.08?Math.max(-.025,Math.min(.025,drift*.08)):0;
+  const rate=clock.playbackRate*(1+correction);
+  if(Math.abs(a.playbackRate-rate)>.0001)a.playbackRate=rate;
+ }
+ for(const event of ['play','playing','seeked','ratechange'])listen(clock,event,()=>{
+  if(event==='playing'||event==='seeked')buffering=false;
+  if(event==='seeked')seekActive();
+  if(event==='ratechange'&&active)active.a.playbackRate=clock.playbackRate;
+  sync();
+ });
+ for(const event of ['pause','waiting','ended'])listen(clock,event,()=>{
+  if(event==='waiting')buffering=true;
+  if(active){active.a.pause();pendingResume=null;stalledAt=0;previousTime=-1;lastProgressAt=0;}
+ });
+ listen(clock,'seeking',()=>{worklet?.port.postMessage({type:'reset'});active?.a.pause();pendingResume=null;seekActive();window.dispatchEvent(new Event('ce-audio-seek'));});
+ listen(clock,'volumechange',()=>{if(active&&!clock.muted)clock.muted=true;});
+ const timer=setInterval(sync,500);
+ return {state,select,resume,setEnhanced,update(values){tuning=normalizeAudio(values,tuning);worklet?.port.postMessage({type:'strength',value:tuning.strength});updateGain();},calibrate(){worklet?.port.postMessage({type:'calibrate'});},
+  getMuted:()=>muted,getVolume:()=>volume,setMuted(value){muted=!!value;applyOutput();emit();},setVolume(value){volume=Math.max(0,Math.min(1,value));applyOutput();emit();},
+  destroy(){
+   disposed=true;cancelSelection();clearInterval(timer);clean.forEach(fn=>fn());
+   for(const track of [...nativeTracks.values(),...effectTracks.values()]){track.a.pause();track.a.removeAttribute('src');track.a.load();}
+   ctx?.close().catch(()=>{});clock.muted=muted;
+  },
+  getCapture(){if(!active?.level)throw Error('请先开启声音调整');return {ctx,bus,clock,baseOffset:base};}
+ };
 }

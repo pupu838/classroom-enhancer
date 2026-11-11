@@ -156,14 +156,50 @@ export async function mountMultiViewPlayer({sources,originalVideos,PlayerClass=A
   audio=createLiveAudio({clock:art.video,clockId:primary.id,views,workletSource:window.__CE_WORKLET_SOURCE__,onStatus:message=>window.dispatchEvent(new CustomEvent('ce-live-audio-status',{detail:message}))});window.__CE_LIVE_AUDIO__=audio;
   const transport=document.createElement('div');transport.className='ce-transport';transport.innerHTML='<button class="ce-play" aria-label="播放或暂停">播放</button><button class="ce-back" aria-label="后退10秒">−10秒</button><input class="ce-seek" aria-label="播放进度" type="range" min="0" max="1" step="0.1" value="0"><span class="ce-time"></span><button class="ce-forward" aria-label="前进10秒">+10秒</button><label>音频 <select class="ce-audio-track" aria-label="选择音频"></select></label><span class="ce-audio-message" role="status"></span>';stage.after(transport);
   const play=transport.querySelector('.ce-play'),seek=transport.querySelector('.ce-seek'),time=transport.querySelector('.ce-time'),audioSelect=transport.querySelector('.ce-audio-track'),audioMessage=transport.querySelector('.ce-audio-message');
+  const retryAudio=document.createElement('button');retryAudio.type='button';retryAudio.textContent='重试音轨';retryAudio.hidden=true;audioMessage.after(retryAudio);
   for(const view of views){const option=document.createElement('option');option.value=view.id;option.textContent=view.label+'音频';audioSelect.append(option);}audioSelect.value=primary.id;
   const format=value=>{value=Math.max(0,Math.floor(value||0));return Math.floor(value/60)+':'+String(value%60).padStart(2,'0');};let scrubbing=false;
-  function updateTransport(){if(destroyed)return;play.textContent=art.video.paused?'播放':'暂停';const duration=art.video.duration;if(Number.isFinite(duration)){seek.max=String(duration);if(!scrubbing)seek.value=String(art.video.currentTime);}time.textContent=format(art.video.currentTime)+' / '+format(duration);}
-  play.onclick=()=>{if(art.video.paused){audio.state().ctx?.resume().catch(()=>{});art.video.play().catch(()=>{note.textContent='播放被浏览器暂时阻止，请再点一次播放。';});}else art.video.pause();};
+  function updateTransport(){
+   if(destroyed)return;
+   const resumeSound=!art.video.paused&&audio.state().needsGesture;
+   play.textContent=art.video.paused?'播放':resumeSound?'继续声音':'暂停';
+   play.setAttribute('aria-label',resumeSound?'继续声音':'播放或暂停');
+   const duration=art.video.duration;
+   if(Number.isFinite(duration)){seek.max=String(duration);if(!scrubbing)seek.value=String(art.video.currentTime);}
+   time.textContent=format(art.video.currentTime)+' / '+format(duration);
+  }
+  play.onclick=()=>{
+   const sound=audio.state();
+   if(art.video.paused){
+    sound.ctx?.resume().catch(()=>{});
+    art.video.play().catch(()=>{note.textContent='播放被浏览器暂时阻止，请再点一次播放。';});
+    audio.resume();
+   }else if(sound.needsGesture)audio.resume();
+   else art.video.pause();
+  };
   const jump=delta=>{art.video.currentTime=Math.max(0,Math.min(art.video.duration||Infinity,art.video.currentTime+delta));updateTransport();};transport.querySelector('.ce-back').onclick=()=>jump(-10);transport.querySelector('.ce-forward').onclick=()=>jump(10);
   seek.oninput=()=>{scrubbing=true;time.textContent=format(Number(seek.value))+' / '+format(art.video.duration);};seek.onchange=()=>{art.video.currentTime=Number(seek.value);scrubbing=false;updateTransport();};
-  audioSelect.onchange=async()=>{audioMessage.textContent='正在接入，当前声音继续…';try{await audio.select(audioSelect.value);audioMessage.textContent='已切换';}catch(e){audioMessage.textContent=e.message;}audioSelect.value=audio.state().activeId;};
-  listen(window,'ce-audio-state',()=>{audioSelect.value=audio.state().activeId;refreshSound();});
+  let audioRequest=0;
+  async function switchAudio(id){
+   const view=views.find(item=>item.id===id);
+   if(!view)return;
+   const request=++audioRequest;
+   retryAudio.hidden=true;
+   audioMessage.textContent='正在加载'+view.label+'音频，保留当前声音…';
+   try{
+    await audio.select(id);
+   }catch(error){
+    if(destroyed||request!==audioRequest)return;
+    if(error.name==='NotAllowedError'){
+     audioMessage.textContent='浏览器需要一次点击来播放这路音频。';
+     retryAudio.onclick=()=>switchAudio(id);retryAudio.hidden=false;
+    }else audioMessage.textContent=error.message+' 已保留当前声音。';
+   }
+   if(!destroyed&&request===audioRequest)audioSelect.value=audio.state().wantedId;
+  }
+  audioSelect.onchange=()=>switchAudio(audioSelect.value);
+  listen(window,'ce-audio-state',()=>{audioSelect.value=audio.state().wantedId;updateTransport();});
+  listen(window,'ce-live-audio-status',event=>{audioMessage.textContent=event.detail;});
   for(const event of ['play','pause','timeupdate','durationchange','loadedmetadata','seeked'])listen(art.video,event,updateTransport);updateTransport();
   const api={container:root,getVideo:()=>art.video,getRect:()=>stage.getBoundingClientRect(),restore:()=>restore(true),dispose:()=>restore(false,'',false),select,setVisible(ids){selected=[...new Set(ids.filter(id=>views.some(view=>view.id===id)))];if(!selected.length)selected=[primary.id];mode.value=selected.length===1?'single':'mix';render();},getCaption(time){const canonical=time+primary.offset;return captionCues.find(cue=>canonical>=cue.start&&canonical<cue.end)?.text||'';},getViews:()=>views,art};
   window.__CE_PLAYER__=api;
